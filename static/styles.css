@@ -1,0 +1,174 @@
+/* ==========================================================================
+   Sonetel Power Dialer & Pipeline — macOS Minimalist Dark/Light Theme (v5.0)
+   ========================================================================== */
+
+:root {
+  --bg-primary: #09090b;
+  --bg-surface: #121216;
+  --bg-elevated: #18181f;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent-callback: #10b981;
+  --accent-voip: #6366f1;
+}
+
+html.light {
+  --bg-primary: #f4f4f7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f8f9fb;
+  --border-subtle: rgba(0, 0, 0, 0.1);
+  --text-primary: #09090b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.font-mono-code {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+.app-surface {
+  background-color: var(--bg-surface);
+  border-color: var(--border-subtle);
+}
+
+.app-elevated {
+  background-color: var(--bg-elevated);
+  border-color: var(--border-subtle);
+}
+
+.app-border {
+  border-color: var(--border-subtle);
+}
+
+.app-text-primary {
+  color: var(--text-primary);
+}
+
+.app-text-secondary {
+  color: var(--text-secondary);
+}
+
+.app-text-muted {
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Single Slider Calling Mode Switch (Call Back vs Internet VoIP)
+   ========================================================================== */
+.mode-slider-track {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  padding: 3px;
+  border-radius: 9999px;
+  background: rgba(24, 24, 31, 0.9);
+  border: 1px solid var(--border-subtle);
+  width: 286px;
+  height: 36px;
+  user-select: none;
+}
+
+html.light .mode-slider-track {
+  background: #e4e4e7;
+}
+
+.mode-slider-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 9999px;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+              background 0.25s ease;
+  z-index: 1;
+}
+
+.mode-slider-track[data-mode="callback"] .mode-slider-thumb {
+  transform: translateX(0%);
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.4);
+}
+
+.mode-slider-track[data-mode="voip"] .mode-slider-thumb {
+  transform: translateX(100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.45);
+}
+
+.mode-slider-option {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  height: 100%;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.mode-slider-track[data-mode="callback"] .mode-slider-option[data-target="callback"],
+.mode-slider-track[data-mode="voip"] .mode-slider-option[data-target="voip"] {
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Scrollbars & Keyboard Badges
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.22);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.4);
+}
+
+.kanban-drop-active {
+  border-color: #6366f1 !important;
+  background-color: rgba(99, 102, 241, 0.08) !important;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-family: "JetBrains Mono", monospace;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+html.light kbd {
+  background: rgba(0, 0, 0, 0.05);
+}

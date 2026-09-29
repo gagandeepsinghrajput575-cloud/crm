@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+pipeline.db
+pipeline.db-shm
+pipeline.db-wal
+.DS_Store
