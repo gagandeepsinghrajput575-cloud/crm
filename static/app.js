@@ -276,6 +276,9 @@ class SonetelPowerDialerApp {
     // Default to the Active Dialer view so the user can immediately upload & dial
     this.currentView = "dialer";
     this.queueFilter = "all"; // 'all' | 'queued' | 'done'
+    this.queuePage = 0;
+    this.queuePageSize = 75; // pagination for large lists
+    this.kanbanLimit = 80;
 
     // Active Contact & Hard-Locked Call Snapshot
     this.activeLeadId = null;
@@ -289,14 +292,20 @@ class SonetelPowerDialerApp {
     this.connectTransitionTimeout = null;
     this.selectedDisposition = "Answered";
     this.dtmfDigits = "";
+    this.lastDialData = null;
 
-    // Notes debounce
+    // Notes debounce & queue search
     this.notesSaveTimeout = null;
+    this.queueSearchTimeout = null;
 
     // Import state
     this.pendingImportFile = null;
     this.pendingImportPasteText = null;
     this.importColumns = [];
+
+    // SIP/WebRTC
+    this.sipClient = null;
+    this.sipStatus = "disconnected";
 
     // Audio Engine
     this.audio = new SonetelAudioEngine();
@@ -354,16 +363,21 @@ class SonetelPowerDialerApp {
   // Bootstrap & State Synchronization
   // ---------------------------------------------------------------------------
   async loadBootstrapData() {
+    const container = document.getElementById("dialer-up-next-list");
+    if (container) {
+      container.innerHTML = `<div class="p-4 space-y-3 animate-pulse"><div class="h-12 rounded-[12px] bg-[var(--surface-2)]"></div><div class="h-12 rounded-[12px] bg-[var(--surface-2)]"></div><div class="h-12 rounded-[12px] bg-[var(--surface-2)]"></div></div>`;
+    }
     try {
-      const res = await fetch("/api/bootstrap", { cache: "no-store" });
+      const res = await fetch("/api/bootstrap?limit=500", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (!data || typeof data !== "object") throw new Error("Invalid bootstrap payload");
       this.settings = data.settings || {};
-      this.leads = data.leads || [];
+      this.leads = Array.isArray(data.leads) ? data.leads : [];
       this.callLogs = data.calls || data.call_logs || [];
       this.stats = data.stats || {};
       if (data.stages) this.stages = data.stages;
 
-      // Ensure activeLeadId points to a valid contact
       const ordered = this.getOrderedLeads();
       if (!this.activeLeadId || !this.getLeadById(this.activeLeadId)) {
         const firstQueued = ordered.find((l) => l.stage === "Queued") || ordered[0];
@@ -375,9 +389,19 @@ class SonetelPowerDialerApp {
       this.populateCallerIdSelects();
       this.populateSettingsForms();
       this.renderAll();
+
+      const healthDot = document.getElementById("header-health-dot");
+      const healthText = document.getElementById("header-health-text");
+      if (healthDot) { healthDot.className = "w-2 h-2 rounded-full bg-emerald-500"; }
+      if (healthText) { healthText.textContent = `${this.leads.length} contacts · Live`; }
     } catch (err) {
       console.error("Failed to bootstrap:", err);
-      this.showToast("Connection error loading local database", "error");
+      this.showToast(`Failed to load: ${err.message}. Retrying in 3s`, "error");
+      const healthDot = document.getElementById("header-health-dot");
+      const healthText = document.getElementById("header-health-text");
+      if (healthDot) healthDot.className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+      if (healthText) healthText.textContent = "Offline — retrying";
+      setTimeout(() => this.loadBootstrapData(), 3000);
     }
   }
 
@@ -417,11 +441,7 @@ class SonetelPowerDialerApp {
         section.classList.toggle("hidden", v !== viewName);
       }
       if (btn) {
-        if (v === viewName) {
-          btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 bg-indigo-600 text-white shadow-sm";
-        } else {
-          btn.className = "px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 app-text-secondary hover:app-text-primary";
-        }
+        btn.classList.toggle("active", v === viewName);
       }
     });
 
@@ -524,33 +544,33 @@ class SonetelPowerDialerApp {
 
     if (mode === "callback") {
       if (badge) {
-        badge.className = "hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all duration-300 bg-emerald-500/10 text-emerald-400 border-emerald-500/25";
+        badge.className = "hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--accent-soft)] text-[var(--accent)] border";
       }
-      if (badgeDot) badgeDot.className = "w-2 h-2 rounded-full bg-emerald-400";
-      if (badgeText) badgeText.textContent = "📞 Carrier Call Back";
+      if (badgeDot) badgeDot.className = "w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse";
+      if (badgeText) badgeText.textContent = "Callback";
       if (voipSubContainer) {
         voipSubContainer.classList.add("hidden");
         voipSubContainer.classList.remove("flex");
       }
       if (phoneModeTag) {
-        phoneModeTag.textContent = "📞 Carrier Call Back";
-        phoneModeTag.className = "text-emerald-400 font-semibold";
+        phoneModeTag.textContent = "Callback";
+        phoneModeTag.className = "text-[var(--accent)] font-medium";
       }
     } else {
       if (badge) {
-        badge.className = "hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all duration-300 bg-indigo-500/10 text-indigo-400 border-indigo-500/25";
+        badge.className = "hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--accent-2-soft)] text-[var(--accent-2)] border";
       }
-      if (badgeDot) badgeDot.className = "w-2 h-2 rounded-full bg-indigo-400";
+      if (badgeDot) badgeDot.className = "w-1.5 h-1.5 rounded-full bg-[var(--accent-2)] animate-pulse";
       if (badgeText) {
-        badgeText.textContent = voipMethod === "webrtc" ? "📡 Internet VoIP (WebRTC)" : "📡 Internet VoIP (SIP Leg)";
+        badgeText.textContent = voipMethod === "webrtc" ? "VoIP • WebRTC" : "VoIP • SIP";
       }
       if (voipSubContainer) {
         voipSubContainer.classList.remove("hidden");
         voipSubContainer.classList.add("flex");
       }
       if (phoneModeTag) {
-        phoneModeTag.textContent = voipMethod === "webrtc" ? "📡 Internet VoIP (Headset)" : "📡 Internet VoIP (SIP URI)";
-        phoneModeTag.className = "text-indigo-400 font-semibold";
+        phoneModeTag.textContent = voipMethod === "webrtc" ? "VoIP Headset" : "VoIP SIP";
+        phoneModeTag.className = "text-[var(--accent-2)] font-medium";
       }
     }
 
@@ -558,11 +578,11 @@ class SonetelPowerDialerApp {
     const btnSip = document.getElementById("voip-opt-sip");
     if (btnWebrtc && btnSip) {
       if (voipMethod === "webrtc") {
-        btnWebrtc.className = "px-2 py-0.5 rounded-lg font-medium transition-all bg-indigo-600 text-white";
-        btnSip.className = "px-2 py-0.5 rounded-lg font-medium transition-all text-indigo-300 hover:text-white";
+        btnWebrtc.className = "text-[11px] px-2 py-1 rounded-full font-semibold bg-[var(--accent)] text-white";
+        btnSip.className = "text-[11px] px-2 py-1 rounded-full font-medium opacity-60 hover:opacity-100";
       } else {
-        btnSip.className = "px-2 py-0.5 rounded-lg font-medium transition-all bg-indigo-600 text-white";
-        btnWebrtc.className = "px-2 py-0.5 rounded-lg font-medium transition-all text-indigo-300 hover:text-white";
+        btnSip.className = "text-[11px] px-2 py-1 rounded-full font-semibold bg-[var(--accent)] text-white";
+        btnWebrtc.className = "text-[11px] px-2 py-1 rounded-full font-medium opacity-60 hover:opacity-100";
       }
     }
 
@@ -570,30 +590,44 @@ class SonetelPowerDialerApp {
     const dVoip = document.getElementById("drawer-mode-voip");
     if (dCb && dVoip) {
       if (mode === "callback") {
-        dCb.className = "py-2 px-3 rounded-xl border font-semibold flex items-center justify-center gap-1.5 bg-emerald-500/15 border-emerald-500/40 text-emerald-400";
-        dVoip.className = "py-2 px-3 rounded-xl border font-medium flex items-center justify-center gap-1.5 app-elevated app-text-secondary";
+        dCb.className = "py-2 rounded-full border font-semibold bg-[var(--text-primary)] text-[var(--bg)]";
+        dVoip.className = "py-2 rounded-full border font-medium opacity-60";
       } else {
-        dVoip.className = "py-2 px-3 rounded-xl border font-semibold flex items-center justify-center gap-1.5 bg-indigo-500/15 border-indigo-500/40 text-indigo-400";
-        dCb.className = "py-2 px-3 rounded-xl border font-medium flex items-center justify-center gap-1.5 app-elevated app-text-secondary";
+        dVoip.className = "py-2 rounded-full border font-semibold bg-[var(--text-primary)] text-[var(--bg)]";
+        dCb.className = "py-2 rounded-full border font-medium opacity-60";
       }
     }
   }
 
   // ---------------------------------------------------------------------------
-  // COLUMN 1 (LEFT): Calling List Queue with Filter & Search
+  // COLUMN 1 (LEFT): Calling List Queue with Filter & Search — Logic Hard
   // ---------------------------------------------------------------------------
   setQueueFilter(filter) {
     this.queueFilter = filter;
+    this.queuePage = 0;
     ["all", "queued", "done"].forEach((f) => {
       const btn = document.getElementById(`qfilter-${f}`);
       if (btn) {
         if (f === filter) {
-          btn.className = "py-1 rounded-lg font-semibold bg-indigo-600 text-white";
+          btn.className = "flex-1 py-1.5 rounded-full bg-[var(--surface-1)] shadow-sm font-semibold border";
         } else {
-          btn.className = "py-1 rounded-lg font-medium app-text-secondary hover:app-text-primary";
+          btn.className = "flex-1 py-1.5 rounded-full opacity-60 hover:opacity-100 font-medium";
         }
       }
     });
+    this.renderUpNextQueue();
+  }
+
+  debouncedQueueSearch() {
+    if (this.queueSearchTimeout) clearTimeout(this.queueSearchTimeout);
+    this.queueSearchTimeout = setTimeout(() => {
+      this.queuePage = 0;
+      this.renderUpNextQueue();
+    }, 250);
+  }
+
+  changeQueuePage(dir) {
+    this.queuePage = Math.max(0, this.queuePage + dir);
     this.renderUpNextQueue();
   }
 
@@ -630,55 +664,63 @@ class SonetelPowerDialerApp {
 
     if (!filtered.length) {
       container.innerHTML = `
-        <div class="text-xs app-text-muted text-center py-8 px-3">
-          No contacts match this filter. Click <b>Upload Calling List</b> to load your CSV or Excel file.
+        <div class="text-center py-10 px-4 space-y-3">
+          <div class="w-12 h-12 rounded-full bg-[var(--surface-2)] border flex items-center justify-center mx-auto text-[20px]">📭</div>
+          <div class="font-semibold text-[13px]">No contacts match</div>
+          <div class="text-[11px] opacity-60">Try a different filter or upload a list</div>
+          <button onclick="window.app.openImportModal()" class="mt-2 px-4 py-2 rounded-full bg-[var(--accent)] text-white text-[11px] font-semibold">Upload List</button>
         </div>
       `;
       return;
     }
 
-    container.innerHTML = filtered.map((lead) => {
+    const totalPages = Math.ceil(filtered.length / this.queuePageSize);
+    if (this.queuePage >= totalPages) this.queuePage = Math.max(0, totalPages - 1);
+    const start = this.queuePage * this.queuePageSize;
+    const end = start + this.queuePageSize;
+    const pageSlice = filtered.slice(start, end);
+
+    const paginationHtml = filtered.length > this.queuePageSize ? `
+      <div class="flex items-center justify-between gap-2 py-3 px-2 text-[11px] font-medium border-t mt-2">
+        <button onclick="window.app.changeQueuePage(-1)" ${this.queuePage === 0 ? "disabled" : ""} class="px-3 py-1.5 rounded-full bg-[var(--surface-2)] border disabled:opacity-30">← Prev</button>
+        <span class="font-mono-code text-[11px]">Page ${this.queuePage + 1}/${totalPages} · ${filtered.length}</span>
+        <button onclick="window.app.changeQueuePage(1)" ${this.queuePage >= totalPages - 1 ? "disabled" : ""} class="px-3 py-1.5 rounded-full bg-[var(--surface-2)] border disabled:opacity-30">Next →</button>
+      </div>
+    ` : "";
+
+    container.innerHTML = pageSlice.map((lead) => {
       const isSelected = Number(lead.id) === Number(currentId);
       const isLockedInCall = this.callState !== "idle" && Number(lead.id) === Number(this.dialLockedLeadId);
 
-      let statusPill = `<span class="text-[10px] px-1.5 py-0.2 rounded bg-zinc-500/15 app-text-muted">Queued</span>`;
+      let statusPill = `<span class="text-[10px] px-2 py-0.5 rounded-full bg-[var(--surface-3)] border">Queued</span>`;
       if (isLockedInCall) {
-        statusPill = `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/25 text-emerald-300 font-semibold animate-pulse">📞 On Call</span>`;
+        statusPill = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--accent)] text-white animate-pulse">📞 On Call</span>`;
       } else if (lead.stage === "Connected / Answered") {
-        statusPill = `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400">✓ Answered</span>`;
+        statusPill = `<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border">✓ Answered</span>`;
       } else if (lead.stage === "No Answer / Voicemail") {
-        statusPill = `<span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-400">No Answer</span>`;
+        statusPill = `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-700 border">No Answer</span>`;
       } else if (lead.stage === "Follow Up / Closed") {
-        statusPill = `<span class="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-400">${this.escapeHtml(lead.last_disposition || "Closed")}</span>`;
+        statusPill = `<span class="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-600 border">${this.escapeHtml(lead.last_disposition || "Closed")}</span>`;
       } else if (lead.stage === "In Progress") {
-        statusPill = `<span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300">In Progress</span>`;
+        statusPill = `<span class="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent-2-soft)] text-[var(--accent-2)] border">In Progress</span>`;
       }
 
       return `
-        <div
-          onclick="window.app.selectLeadFromQueue(${lead.id})"
-          class="p-2.5 rounded-xl border transition-all cursor-pointer ${
-            isSelected
-              ? "border-emerald-500 bg-emerald-500/10 shadow-sm"
-              : "app-elevated hover:border-zinc-500/40"
-          }"
-        >
-          <div class="flex items-center justify-between gap-1.5">
-            <div class="flex items-center gap-1.5 min-w-0">
-              <span class="font-mono-code text-[10px] px-1.5 py-0.2 rounded ${
-                isSelected ? "bg-emerald-500 text-zinc-950 font-bold" : "bg-zinc-500/20 app-text-secondary"
-              }">#${lead._listNumber}</span>
-              <span class="text-xs font-semibold app-text-primary truncate">${this.escapeHtml(lead.name)}</span>
+        <div onclick="window.app.selectLeadFromQueue(${lead.id})" class="queue-item ${isSelected ? "selected" : ""}">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="queue-num">#${lead._listNumber}</span>
+              <span class="text-[13px] font-semibold truncate">${this.escapeHtml(lead.name)}</span>
             </div>
             ${statusPill}
           </div>
-          <div class="flex items-center justify-between gap-2 mt-1 text-[11px]">
-            <span class="app-text-muted truncate">${this.escapeHtml(lead.company || lead.role || "Direct Contact")}</span>
-            <span class="font-mono-code text-emerald-400 shrink-0">${this.escapeHtml(lead.phone)}</span>
+          <div class="flex items-center justify-between gap-2 mt-1.5 text-[11px]">
+            <span class="opacity-60 truncate">${this.escapeHtml(lead.company || lead.role || "Direct")}</span>
+            <span class="font-mono-code font-medium text-[var(--accent)] shrink-0">${this.escapeHtml(lead.phone)}</span>
           </div>
         </div>
       `;
-    }).join("");
+    }).join("") + paginationHtml;
   }
 
   selectLeadFromQueue(leadId) {
@@ -831,23 +873,23 @@ class SonetelPowerDialerApp {
         const strVal = String(val).trim();
         const isUrl = /^https?:\/\//i.test(strVal) || /^www\./i.test(strVal);
 
-        let valueMarkup = `<span class="font-semibold app-text-primary break-words select-all">${this.escapeHtml(strVal)}</span>`;
+        let valueMarkup = `<span class="field-value break-words select-all">${this.escapeHtml(strVal)}</span>`;
         if (isUrl) {
           const href = strVal.startsWith("http") ? strVal : `https://${strVal}`;
-          valueMarkup = `<a href="${this.escapeHtml(href)}" target="_blank" rel="noopener" class="font-semibold text-indigo-400 hover:underline break-all">${this.escapeHtml(strVal)} ↗</a>`;
+          valueMarkup = `<a href="${this.escapeHtml(href)}" target="_blank" rel="noopener" class="field-value text-[var(--accent)] hover:underline break-all">${this.escapeHtml(strVal)} ↗</a>`;
         } else if (normKey.includes("phone")) {
-          valueMarkup = `<span class="font-mono-code font-bold text-emerald-400 select-all">${this.escapeHtml(strVal)}</span>`;
+          valueMarkup = `<span class="field-value mono font-medium text-[var(--accent)] select-all">${this.escapeHtml(strVal)}</span>`;
         } else if (normKey.includes("deal") || normKey.includes("value") || normKey.includes("budget") || normKey.includes("price")) {
-          valueMarkup = `<span class="font-mono-code font-bold text-amber-400 select-all">${this.escapeHtml(strVal)}</span>`;
+          valueMarkup = `<span class="field-value mono font-semibold bg-amber-400 text-black px-1.5 py-0.5 rounded-full text-[12px]">${this.escapeHtml(strVal)}</span>`;
         }
 
         allCards.push(`
-          <div class="p-2.5 rounded-xl app-elevated border flex flex-col justify-between ${isCustom ? "border-indigo-500/25" : ""}">
-            <div class="text-[10px] uppercase tracking-wider app-text-muted font-medium flex items-center justify-between">
+          <div class="field-card flex flex-col justify-between ${isCustom ? "custom" : ""}">
+            <div class="field-label flex items-center justify-between">
               <span>${this.escapeHtml(key)}</span>
-              ${isCustom ? `<span class="text-[9px] text-indigo-400 font-mono-code">sheet</span>` : ""}
+              ${isCustom ? `<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--accent-2-soft)] text-[var(--accent-2)] border">sheet</span>` : ""}
             </div>
-            <div class="mt-0.5 text-xs">${valueMarkup}</div>
+            <div class="mt-1">${valueMarkup}</div>
           </div>
         `);
       };
@@ -856,9 +898,9 @@ class SonetelPowerDialerApp {
       Object.entries(customObj).forEach(([k, v]) => addFieldCard(k, v, true));
 
       if (fieldsBadge) {
-        fieldsBadge.textContent = `${allCards.length} Info Fields Shown`;
+        fieldsBadge.textContent = `${allCards.length} fields`;
       }
-      fieldsGrid.innerHTML = allCards.join("");
+      fieldsGrid.innerHTML = allCards.join("") || `<div class="col-span-2 text-[12px] opacity-60 py-4 text-center">No extra fields — add one below</div>`;
     }
 
     // Render Previous Call History for This Specific Contact
@@ -1010,6 +1052,22 @@ class SonetelPowerDialerApp {
         this.leads[idx].attempts = (this.leads[idx].attempts || 0) + 1;
       }
 
+      // WebRTC SIP attempt if in voip/webrtc mode
+      let sipAttempted = false;
+      if ((this.settings.calling_mode || "callback") === "voip" && (this.settings.voip_method || "webrtc") === "webrtc") {
+        try {
+          const sipReady = await this.ensureSipReady();
+          if (sipReady) {
+            sipAttempted = await this.makeWebRtcSipCall(lead.phone);
+            if (sipAttempted) {
+              this.showToast(`📡 WebRTC SIP calling ${lead.name} — connecting via ${this.settings.sip_wss_server}...`, "info");
+            }
+          }
+        } catch (e) {
+          console.warn("SIP attempt failed, falling back to simulation", e);
+        }
+      }
+
       const inspector = document.getElementById("sonetel-api-inspector");
       if (inspector) {
         inspector.textContent = JSON.stringify(
@@ -1017,6 +1075,13 @@ class SonetelPowerDialerApp {
             locked_contact: lead.name,
             target_phone_e164: lead.phone,
             sonetel_endpoint: data.endpoint,
+            calling_mode: data.calling_mode,
+            voip_method: data.voip_method,
+            is_simulated: data.is_simulated,
+            has_live_token: data.has_live_token,
+            sip_attempted: sipAttempted,
+            sip_status: this.sipStatus,
+            live_error: data.live_error || data.response_payload?.live_error || null,
             request_payload: data.request_payload,
             response: data.response_payload || data.sonetel_response
           },
@@ -1025,7 +1090,19 @@ class SonetelPowerDialerApp {
         );
       }
 
-      this.showToast(`Calling ${lead.name} (${lead.phone})...`, "success");
+      // Improved error handling: show if live token present but fallback to simulated
+      if (data.is_simulated && data.has_live_token && data.live_error) {
+        this.showToast(`⚠️ Live Sonetel call failed: ${data.live_error}. Using local simulation — check credentials & account balance.`, "warning");
+      } else if (data.is_simulated && data.has_live_token) {
+        this.showToast(`Calling ${lead.name} in simulation (live token present but ${data.calling_mode} uses WebRTC path)`, "info");
+      } else if (data.is_simulated) {
+        this.showToast(`📞 Calling ${lead.name} (${lead.phone}) in local bridge mode — ready to talk!`, "success");
+      } else {
+        this.showToast(`✅ Live call connected to ${lead.name} via Sonetel!`, "success");
+      }
+
+      // Store last dial payload for complete call logging
+      this.lastDialData = data;
 
       if (this.connectTransitionTimeout) clearTimeout(this.connectTransitionTimeout);
       this.connectTransitionTimeout = setTimeout(() => {
@@ -1036,6 +1113,11 @@ class SonetelPowerDialerApp {
           this.updateDialButtonUI();
           this.renderActiveDialer();
           this.renderUpNextQueue();
+          // Update call pop live badge
+          const liveBadge = document.getElementById("call-pop-live-badge");
+          const dialBadge = document.getElementById("call-pop-dialing-badge");
+          if (liveBadge) liveBadge.classList.remove("hidden");
+          if (dialBadge) dialBadge.classList.add("hidden");
         }
       }, 1400);
     } catch (err) {
@@ -1052,12 +1134,20 @@ class SonetelPowerDialerApp {
     if (this.callTimerInterval) clearInterval(this.callTimerInterval);
     this.callSeconds = 0;
     const timerEl = document.getElementById("call-timer-display");
+    const popTimer = document.getElementById("call-pop-timer");
     if (timerEl) timerEl.textContent = "00:00";
+    if (popTimer) popTimer.textContent = "00:00";
 
     this.callTimerInterval = setInterval(() => {
       this.callSeconds += 1;
-      if (timerEl) {
-        timerEl.textContent = this.formatSeconds(this.callSeconds);
+      const fmt = this.formatSeconds(this.callSeconds);
+      if (timerEl) timerEl.textContent = fmt;
+      const pt = document.getElementById("call-pop-timer");
+      if (pt) pt.textContent = fmt;
+      const btnText = document.getElementById("btn-primary-dial-text");
+      if (btnText && this.callState === "connected") {
+        const lead = this.getDisplayedLead();
+        btnText.textContent = `End Call — ${fmt}${lead ? ` · ${lead.name.split(" ")[0]}` : ""}`;
       }
     }, 1000);
   }
@@ -1079,6 +1169,7 @@ class SonetelPowerDialerApp {
     if (this.audio.isRecording) {
       this.toggleCallRecording();
     }
+    this.hangupSipCall();
     const finishedLead = this.getDisplayedLead();
     this.callState = "idle";
     this.dialLockedLeadId = null;
@@ -1096,32 +1187,194 @@ class SonetelPowerDialerApp {
     const btnText = document.getElementById("btn-primary-dial-text");
     const stateLabel = document.getElementById("call-state-label");
     const lead = this.getDisplayedLead();
-    const personName = lead ? lead.name : "Contact";
+    const personName = lead ? lead.name.split(" ")[0] : "Contact";
 
     if (!btn || !btnText) return;
 
+    const base = "w-full py-4 rounded-[14px] font-semibold text-[14px] flex items-center justify-center gap-2 transition-all";
+
     if (this.callState === "idle") {
-      btn.className = "w-full py-4 px-5 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-3 transition-all active:scale-[0.99]";
+      btn.className = `${base} bg-[var(--accent)] text-white hover:opacity-90 shadow-sm`;
       btnText.textContent = `Call ${personName}`;
       if (stateLabel) {
-        stateLabel.textContent = "READY TO DIAL";
-        stateLabel.className = "uppercase font-bold tracking-wider app-text-secondary";
+        stateLabel.textContent = "Ready";
+        stateLabel.className = "text-[10px] font-medium opacity-60 uppercase tracking-widest";
       }
     } else if (this.callState === "dialing") {
-      btn.className = "w-full py-4 px-5 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 shadow-lg shadow-rose-600/25 flex items-center justify-center gap-3 transition-all";
-      btnText.textContent = `Dialing ${personName}... (Click to End)`;
+      btn.className = `${base} bg-amber-500 text-black hover:bg-amber-400 animate-pulse`;
+      btnText.textContent = `Dialing ${personName}… Tap to End`;
       if (stateLabel) {
-        stateLabel.textContent = "🔔 DIALING...";
-        stateLabel.className = "uppercase font-bold tracking-wider text-amber-400 animate-pulse";
+        stateLabel.textContent = "Dialing…";
+        stateLabel.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-black animate-pulse";
       }
     } else if (this.callState === "connected") {
-      btn.className = "w-full py-4 px-5 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 shadow-lg shadow-rose-600/30 flex items-center justify-center gap-3 transition-all";
-      btnText.textContent = `End Call with ${personName}`;
+      btn.className = `${base} bg-[#0F0F10] text-white border border-white/20 hover:bg-zinc-900`;
+      btnText.textContent = `End Call — ${this.formatSeconds(this.callSeconds)}`;
       if (stateLabel) {
-        stateLabel.textContent = "🟢 CONNECTED — ON CALL";
-        stateLabel.className = "uppercase font-bold tracking-wider text-emerald-400";
+        stateLabel.textContent = "● Connected";
+        stateLabel.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white";
       }
     }
+    // Show professional call pop like Kixie / PhoneBurner
+    this.showCallPop();
+  }
+
+  // ---------------------------------------------------------------------------
+  // PROFESSIONAL CALL POP — Screen Pop on Dial (Kixie / PhoneBurner / Ringover style)
+  // Instant context from Excel/CSV upload when call connects
+  // ---------------------------------------------------------------------------
+  showCallPop() {
+    const lead = this.getDisplayedLead();
+    if (!lead) return;
+    const overlay = document.getElementById("call-pop-overlay");
+    if (!overlay) return;
+
+    // Populate header
+    const initials = (lead.name || "?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+    const avatar = document.getElementById("call-pop-avatar");
+    if (avatar) avatar.textContent = initials;
+
+    const nameEl = document.getElementById("call-pop-name");
+    if (nameEl) nameEl.textContent = lead.name || "Unknown";
+    const compEl = document.getElementById("call-pop-company");
+    if (compEl) compEl.textContent = lead.company || "Independent";
+    const roleEl = document.getElementById("call-pop-role");
+    if (roleEl) roleEl.textContent = lead.role || "Prospect";
+    const phoneEl = document.getElementById("call-pop-phone");
+    if (phoneEl) phoneEl.textContent = lead.phone || "";
+    const rawEl = document.getElementById("call-pop-rawphone");
+    if (rawEl) rawEl.textContent = `Raw: ${lead.raw_phone || lead.phone || ""}`;
+    const timerEl = document.getElementById("call-pop-timer");
+    if (timerEl) timerEl.textContent = this.formatSeconds(this.callSeconds);
+    const modeEl = document.getElementById("call-pop-mode");
+    if (modeEl) {
+      const m = (this.settings.calling_mode || "callback") === "voip" ? "VoIP" : "Callback";
+      const cid = this.settings.caller_id || "+1 415…";
+      modeEl.textContent = `${m} via ${cid}`;
+    }
+    const locBadge = document.getElementById("call-pop-location-badge");
+    if (locBadge) {
+      const lt = this.computeLocalTimeForPhone(lead.phone, lead.location);
+      locBadge.textContent = lt || lead.location || "";
+    }
+
+    // Badges
+    const liveBadge = document.getElementById("call-pop-live-badge");
+    const dialBadge = document.getElementById("call-pop-dialing-badge");
+    if (liveBadge && dialBadge) {
+      if (this.callState === "connected") {
+        liveBadge.classList.remove("hidden");
+        dialBadge.classList.add("hidden");
+      } else {
+        liveBadge.classList.add("hidden");
+        dialBadge.classList.remove("hidden");
+      }
+    }
+
+    // Parse custom fields (Excel columns)
+    let customObj = {};
+    try {
+      if (lead.custom_fields_parsed && typeof lead.custom_fields_parsed === "object") customObj = lead.custom_fields_parsed;
+      else if (lead.custom_fields) customObj = JSON.parse(lead.custom_fields);
+    } catch(_) {}
+
+    // Overview fields (standard + some custom)
+    const overviewGrid = document.getElementById("call-pop-fields-grid");
+    if (overviewGrid) {
+      const entries = [
+        ["Phone", lead.phone, true],
+        ["Company", lead.company],
+        ["Role", lead.role],
+        ["Email", lead.email],
+        ["Location", lead.location],
+        ["Priority", lead.priority],
+        ["Attempts", String(lead.attempts || 0)],
+        ["Stage", lead.stage],
+      ];
+      // Add first 4 custom fields to overview
+      Object.entries(customObj).slice(0,4).forEach(([k,v])=> entries.push([k, v, false, true]));
+      overviewGrid.innerHTML = entries.filter(([,v])=> v && String(v).trim()).map(([k,v,isMono,isCustom])=> {
+        const mono = isMono ? "font-mono-code font-medium text-[var(--accent)]" : "font-medium";
+        const badge = isCustom ? `<span class="ml-1 text-[9px] px-1 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] border">Excel</span>` : "";
+        return `<div class="field-card"><div class="field-label flex items-center">${this.escapeHtml(k)}${badge}</div><div class="mt-1 text-[13px] ${mono} break-all">${this.escapeHtml(String(v))}</div></div>`;
+      }).join("") || `<div class="col-span-2 text-[12px] opacity-60">No extra details</div>`;
+    }
+
+    // Excel grid — 100% of uploaded columns
+    const excelGrid = document.getElementById("call-pop-excel-grid");
+    const excelCount = document.getElementById("call-pop-excel-count");
+    if (excelGrid) {
+      const allCustom = Object.entries(customObj);
+      if (excelCount) excelCount.textContent = String(allCustom.length);
+      if (!allCustom.length) {
+        excelGrid.innerHTML = `<div class="col-span-2 text-center py-6 space-y-2"><div class="text-[13px] font-medium">No Excel columns — this contact is from sample data</div><div class="text-[11px] opacity-60">Upload your own CSV/Excel to see all columns here instantly on every call</div></div>`;
+      } else {
+        excelGrid.innerHTML = allCustom.map(([k,v])=> {
+          const str = String(v||"").trim();
+          const isUrl = /^https?:\/\//.test(str);
+          let valHtml = this.escapeHtml(str);
+          if (isUrl) valHtml = `<a href="${this.escapeHtml(str)}" target="_blank" class="text-[var(--accent)] underline">${this.escapeHtml(str)} ↗</a>`;
+          return `<div class="field-card custom"><div class="field-label">${this.escapeHtml(k)}</div><div class="mt-1 text-[12px] font-medium break-all">${valHtml}</div></div>`;
+        }).join("");
+      }
+    }
+
+    // History
+    const histList = document.getElementById("call-pop-history-list");
+    if (histList) {
+      const logs = this.callLogs.filter(c=> Number(c.lead_id)===Number(lead.id)).slice(0,5);
+      if (!logs.length) {
+        histList.innerHTML = `<div class="text-[12px] opacity-60 py-4 text-center">No previous calls for ${this.escapeHtml(lead.name)} — first touch!</div>`;
+      } else {
+        histList.innerHTML = logs.map(l=> `<div class="flex justify-between items-center p-2.5 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"><span><b>${this.escapeHtml(l.disposition)}</b> · ${this.formatSeconds(l.duration_seconds||0)} · ${(l.call_mode||l.calling_mode)==='voip'?'VoIP':'Callback'}</span><span class="font-mono-code opacity-60">${l.created_at ? new Date(l.created_at).toLocaleTimeString() : ""}</span></div>`).join("");
+      }
+    }
+
+    // Notes sync
+    const notesEl = document.getElementById("call-pop-notes");
+    const mainNotes = document.getElementById("dialer-notes-textarea");
+    if (notesEl) {
+      notesEl.value = (mainNotes && mainNotes.value) || lead.notes || "";
+    }
+
+    // Show
+    overlay.classList.remove("hidden");
+    this.switchCallPopTab('overview');
+  }
+
+  hideCallPop() {
+    const overlay = document.getElementById("call-pop-overlay");
+    if (overlay) overlay.classList.add("hidden");
+  }
+
+  switchCallPopTab(tab) {
+    const panes = ["overview","excel","history"];
+    panes.forEach(p=> {
+      const pane = document.getElementById(`call-pop-pane-${p}`);
+      const btn = document.getElementById(`call-pop-tab-${p}`);
+      if (pane) pane.classList.toggle("hidden", p!==tab);
+      if (btn) {
+        if (p===tab) btn.className = "px-3 py-1.5 rounded-full bg-[var(--surface-1)] shadow-sm font-semibold border";
+        else btn.className = "px-3 py-1.5 rounded-full opacity-60 hover:opacity-100";
+      }
+    });
+  }
+
+  handleCallPopNotes(val) {
+    const main = document.getElementById("dialer-notes-textarea");
+    if (main) {
+      main.value = val;
+      this.handleNotesInput(val);
+    }
+  }
+
+  copyCallPopPhone() {
+    this.copyActivePhone();
+  }
+
+  handleCallPopPrimary() {
+    this.hideCallPop();
+    this.hangUpAndMoveToNext();
   }
 
   // ---------------------------------------------------------------------------
@@ -1191,6 +1444,151 @@ class SonetelPowerDialerApp {
   }
 
   // ---------------------------------------------------------------------------
+  // SIP.js / JsSIP WebRTC Integration (Option A)
+  // ---------------------------------------------------------------------------
+  async ensureSipReady() {
+    if (this.sipStatus === "connected" && this.sipClient) return true;
+    if (typeof JsSIP === "undefined" && typeof SIP === "undefined") {
+      console.warn("SIP libraries not loaded");
+      return false;
+    }
+
+    const sipUri = this.settings.sip_uri || "";
+    const wssServer = this.settings.sip_wss_server || "wss://sip.sonetel.com:443";
+    const sipPass = this.settings.sip_password || this.settings.sonetel_password || "";
+
+    if (!sipUri) {
+      this.showToast("Set SIP URI in Settings for WebRTC calling", "warning");
+      return false;
+    }
+
+    try {
+      // Try JsSIP first (more compatible)
+      if (typeof JsSIP !== "undefined") {
+        const socket = new JsSIP.WebSocketInterface(wssServer);
+        const uri = sipUri.startsWith("sip:") ? sipUri : `sip:${sipUri}`;
+        const config = {
+          uri: uri,
+          password: sipPass,
+          display_name: "Sonetel Dialer",
+          sockets: [socket],
+          register: false // don't auto-register, just make calls
+        };
+        // If no password, try anonymous
+        if (!sipPass) {
+          config.password = undefined;
+          config.register = false;
+        }
+        this.sipClient = new JsSIP.UA(config);
+        this.sipClient.on("connected", () => {
+          this.sipStatus = "connected";
+          console.log("JsSIP connected");
+        });
+        this.sipClient.on("disconnected", () => {
+          this.sipStatus = "disconnected";
+        });
+        this.sipClient.on("registered", () => {
+          this.sipStatus = "registered";
+          this.showToast("SIP registered — WebRTC ready", "success");
+        });
+        this.sipClient.on("registrationFailed", (e) => {
+          console.warn("SIP registration failed", e);
+          // Still allow calls without registration for some providers
+          this.sipStatus = "connected";
+        });
+        this.sipClient.start();
+        // Wait briefly for connection
+        await new Promise((r) => setTimeout(r, 800));
+        return true;
+      } else if (typeof SIP !== "undefined") {
+        // Fallback to SIP.js
+        const uri = SIP.UserAgent.makeURI(sipUri.startsWith("sip:") ? sipUri : `sip:${sipUri}`);
+        if (!uri) return false;
+        const userAgent = new SIP.UserAgent({
+          uri: uri,
+          transportOptions: {
+            server: wssServer
+          },
+          authorizationUsername: sipUri.split("@")[0].replace("sip:", ""),
+          authorizationPassword: sipPass,
+          displayName: "Sonetel Dialer"
+        });
+        await userAgent.start();
+        this.sipClient = userAgent;
+        this.sipStatus = "connected";
+        return true;
+      }
+    } catch (e) {
+      console.error("SIP init failed", e);
+      this.sipStatus = "failed";
+      return false;
+    }
+    return false;
+  }
+
+  async makeWebRtcSipCall(targetPhone) {
+    // Attempt to make a real SIP call via WebRTC if possible
+    try {
+      if (typeof JsSIP !== "undefined" && this.sipClient) {
+        const target = `sip:${targetPhone.replace(/[^+0-9]/g, "")}@sip.sonetel.com`;
+        const eventHandlers = {
+          progress: (e) => console.log("SIP call progress", e),
+          failed: (e) => console.log("SIP call failed", e),
+          ended: (e) => {
+            console.log("SIP call ended", e);
+            if (this.callState !== "idle") {
+              this.callState = "idle";
+              this.updateDialButtonUI();
+            }
+          },
+          confirmed: (e) => {
+            console.log("SIP call confirmed", e);
+            this.callState = "connected";
+            this.startCallTimer();
+            this.updateDialButtonUI();
+            this.audio.playTingSound("connect");
+          }
+        };
+        const options = {
+          eventHandlers: eventHandlers,
+          mediaConstraints: { audio: true, video: false },
+          pcConfig: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+        };
+        // Attach remote audio
+        const session = this.sipClient.call(target, options);
+        this.sipSession = session;
+
+        // Create audio element for remote stream
+        session.on("peerconnection", (e) => {
+          const peerconnection = e.peerconnection;
+          peerconnection.ontrack = (trackEvent) => {
+            const remoteAudio = document.getElementById("remote-audio");
+            if (remoteAudio) {
+              remoteAudio.srcObject = trackEvent.streams[0];
+              remoteAudio.play().catch(() => {});
+            }
+          };
+        });
+
+        return true;
+      }
+    } catch (e) {
+      console.error("WebRTC SIP call error", e);
+      return false;
+    }
+    return false;
+  }
+
+  hangupSipCall() {
+    try {
+      if (this.sipSession) {
+        this.sipSession.terminate();
+        this.sipSession = null;
+      }
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------------------
   // Dispositions & "Save Outcome & Load Next Person" Workflow
   // ---------------------------------------------------------------------------
   selectDisposition(disp) {
@@ -1201,16 +1599,19 @@ class SonetelPowerDialerApp {
     document.querySelectorAll(".disp-btn").forEach((btn) => {
       const bDisp = btn.getAttribute("data-disp");
       if (bDisp === disp) {
-        btn.className = "disp-btn px-3 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all border-indigo-500 bg-indigo-500/20 text-white shadow-sm";
+        btn.className = "disp-btn selected px-3 py-3 text-[12px] flex items-center justify-between";
       } else {
-        btn.className = "disp-btn px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all app-elevated app-text-secondary hover:app-text-primary";
+        btn.className = "disp-btn px-3 py-3 text-[12px] flex items-center justify-between";
       }
     });
   }
 
   async toggleAutoDialSetting(checked) {
-    this.settings.auto_advance = checked ? "true" : "false";
-    await this.persistSettings({ auto_advance: this.settings.auto_advance }, false);
+    const val = checked ? "true" : "false";
+    this.settings.auto_advance = val;
+    this.settings.auto_dial_next = val;
+    await this.persistSettings({ auto_advance: val, auto_dial_next: val }, false);
+    this.showToast(checked ? "Auto-dial next ON — will call next person after Save" : "Auto-dial next OFF", "info");
   }
 
   async hangUpAndMoveToNext() {
@@ -1244,6 +1645,7 @@ class SonetelPowerDialerApp {
     this.dialLockedLeadSnapshot = null;
 
     try {
+      const lastDial = this.lastDialData || {};
       const res = await fetch("/api/calls/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1255,7 +1657,11 @@ class SonetelPowerDialerApp {
           caller_id: this.settings.caller_id || "",
           duration_seconds: duration,
           disposition: this.selectedDisposition || "Answered",
-          notes: currentNotes
+          notes: currentNotes,
+          sonetel_call_id: lastDial.sonetel_call_id || "",
+          api_payload: lastDial.request_payload || {},
+          api_response: lastDial.response_payload || {},
+          is_simulated: lastDial.is_simulated !== undefined ? lastDial.is_simulated : true
         })
       });
       const data = await res.json();
@@ -1283,6 +1689,7 @@ class SonetelPowerDialerApp {
       if (timerEl) timerEl.textContent = "00:00";
 
       this.renderAll();
+      this.hideCallPop();
       this.showToast(
         `Saved "${this.selectedDisposition}" for ${lead.name}. ${nextLead ? `Now showing ${nextLead.name}.` : ""}`,
         "success"
@@ -1291,7 +1698,7 @@ class SonetelPowerDialerApp {
       if (String(this.settings.auto_advance) === "true" && nextLead && nextLead.id !== currentLeadId) {
         setTimeout(() => {
           this.startDialSession();
-        }, 500);
+        }, 700);
       }
     } catch (err) {
       console.error("Failed completing call:", err);
@@ -1417,26 +1824,31 @@ class SonetelPowerDialerApp {
         return true;
       });
 
-      const cardsHtml = stageLeads.length
-        ? stageLeads.map((lead) => this.renderKanbanCard(lead)).join("")
-        : `<div class="h-28 border border-dashed app-border rounded-xl flex items-center justify-center text-[11px] app-text-muted">Drop contact here</div>`;
+      const totalInStage = stageLeads.length;
+      const limitedLeads = stageLeads.slice(0, this.kanbanLimit);
+      const remaining = totalInStage - limitedLeads.length;
+
+      let cardsHtml = "";
+      if (!limitedLeads.length) {
+        cardsHtml = `<div class="h-28 border border-dashed app-border rounded-xl flex items-center justify-center text-[11px] app-text-muted">Drop contact here</div>`;
+      } else {
+        cardsHtml = limitedLeads.map((lead) => this.renderKanbanCard(lead)).join("");
+        if (remaining > 0) {
+          cardsHtml += `<div class="text-[11px] app-text-muted text-center py-2 px-2 rounded-xl app-elevated border">+ ${remaining} more in ${this.escapeHtml(stage)} — use search to filter</div>`;
+        }
+      }
 
       return `
-        <div
-          class="app-surface border rounded-2xl flex flex-col h-full overflow-hidden transition-colors"
-          ondragover="event.preventDefault(); this.classList.add('kanban-drop-active');"
-          ondragleave="this.classList.remove('kanban-drop-active');"
-          ondrop="window.app.handleKanbanDrop(event, '${stage}'); this.classList.remove('kanban-drop-active');"
+        <div data-stage="${this.escapeHtml(stage)}" class="kanban-lane bg-[var(--surface-1)] border flex flex-col h-full overflow-hidden"
+          ondragover="event.preventDefault(); this.classList.add('ring-2');"
+          ondragleave="this.classList.remove('ring-2');"
+          ondrop="window.app.handleKanbanDrop(event, '${stage}'); this.classList.remove('ring-2');"
         >
-          <div class="p-3 border-b app-border flex items-center justify-between shrink-0">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-xs font-semibold truncate app-text-primary">${this.escapeHtml(stage)}</span>
-            </div>
-            <span class="font-mono-code text-[11px] px-2 py-0.5 rounded-full ${stageColors[stage] || "bg-zinc-700"}">
-              ${stageLeads.length}
-            </span>
+          <div class="p-3.5 border-b flex items-center justify-between shrink-0 bg-[var(--surface-2)]">
+            <span class="font-semibold text-[13px] truncate">${this.escapeHtml(stage)}</span>
+            <span class="font-mono-code text-[11px] px-2.5 py-1 rounded-full bg-[var(--surface-1)] border">${totalInStage}</span>
           </div>
-          <div class="flex-1 overflow-y-auto p-2.5 space-y-2.5">
+          <div class="flex-1 overflow-y-auto p-2.5 space-y-2.5 bg-[var(--ink-2)]">
             ${cardsHtml}
           </div>
         </div>
@@ -1446,49 +1858,23 @@ class SonetelPowerDialerApp {
 
   renderKanbanCard(lead) {
     const isActive = Number(lead.id) === Number(this.activeLeadId);
-    const prioColors = {
-      High: "bg-rose-500/15 text-rose-400 border-rose-500/25",
-      Medium: "bg-amber-500/15 text-amber-400 border-amber-500/25",
-      Low: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"
-    };
-    const pBadge = prioColors[lead.priority] || prioColors.Medium;
-
+    const prioStyle = lead.priority === "High" ? "bg-amber-400 text-black" : lead.priority === "Low" ? "bg-[var(--surface-3)]" : "bg-[var(--surface-2)] border";
     return `
-      <div
-        draggable="true"
-        ondragstart="window.app.handleKanbanDragStart(event, ${lead.id})"
-        class="app-elevated border rounded-xl p-3 space-y-2 transition-all hover:border-indigo-500/40 cursor-grab ${isActive ? "ring-1 ring-emerald-500/50" : ""}"
-      >
+      <div draggable="true" ondragstart="window.app.handleKanbanDragStart(event, ${lead.id})" class="rounded-[12px] border bg-[var(--surface-1)] p-3 space-y-2 cursor-grab hover:border-[var(--border-strong)] transition-all ${isActive ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : ""}">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <div class="font-semibold text-xs app-text-primary truncate">${this.escapeHtml(lead.name)}</div>
-            <div class="text-[11px] app-text-secondary truncate">${this.escapeHtml(lead.company || "Independent")}</div>
+            <div class="font-semibold text-[13px] truncate">${this.escapeHtml(lead.name)}</div>
+            <div class="text-[11px] opacity-60 truncate">${this.escapeHtml(lead.company || "Independent")}</div>
           </div>
-          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0 ${pBadge}">
-            ${this.escapeHtml(lead.priority || "Medium")}
-          </span>
+          <span class="text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${prioStyle}">${this.escapeHtml(lead.priority || "Medium")}</span>
         </div>
-
         <div class="flex items-center justify-between text-[11px] font-mono-code">
-          <span class="text-emerald-400">${this.escapeHtml(lead.phone)}</span>
-          <span class="app-text-muted">Calls: ${lead.attempts || 0}</span>
+          <span class="text-[var(--accent)] font-medium">${this.escapeHtml(lead.phone)}</span>
+          <span class="opacity-50">Calls ${lead.attempts || 0}</span>
         </div>
-
-        <div class="pt-1.5 border-t app-border flex items-center justify-between gap-1.5">
-          <button
-            type="button"
-            onclick="window.app.jumpToDialLead(${lead.id}, false)"
-            class="flex-1 py-1.5 px-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-semibold text-[11px] flex items-center justify-center gap-1 transition-colors"
-          >
-            <span>📞 Open in Dialer</span>
-          </button>
-          <button
-            type="button"
-            onclick="window.app.openLeadModal(${lead.id})"
-            class="py-1.5 px-2 rounded-lg app-surface border hover:border-zinc-500 text-[11px] app-text-secondary hover:app-text-primary"
-          >
-            Edit
-          </button>
+        <div class="pt-2 border-t flex items-center justify-between gap-1.5">
+          <button onclick="window.app.jumpToDialLead(${lead.id}, false)" class="flex-1 py-2 px-2 rounded-full bg-[var(--text-primary)] text-[var(--bg)] font-medium text-[11px]">Open in Dialer</button>
+          <button onclick="window.app.openLeadModal(${lead.id})" class="py-2 px-3 rounded-full bg-[var(--surface-2)] border text-[11px]">Edit</button>
         </div>
       </div>
     `;
@@ -1565,38 +1951,25 @@ class SonetelPowerDialerApp {
     tbody.innerHTML = this.callLogs.map((log) => {
       const isVoip = (log.call_mode || log.calling_mode) === "voip";
       const modeBadge = isVoip
-        ? `<span class="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-400 font-medium">📡 Internet VoIP</span>`
-        : `<span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 font-medium">📞 Call Back</span>`;
+        ? `<span class="px-2.5 py-1 rounded-full bg-[var(--accent-2-soft)] text-[var(--accent-2)] border text-[11px] font-medium">VoIP</span>`
+        : `<span class="px-2.5 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] border text-[11px] font-medium">Callback</span>`;
 
-      const dispBadgeColors = {
-        Answered: "bg-emerald-500/15 text-emerald-400",
-        "No Answer": "bg-amber-500/15 text-amber-400",
-        Busy: "bg-orange-500/15 text-orange-400",
-        "Wrong Number": "bg-rose-500/15 text-rose-400"
-      };
-      const dispClass = dispBadgeColors[log.disposition] || "bg-zinc-500/15 app-text-secondary";
+      const dispClass = log.disposition === "Answered" ? "bg-emerald-500/15 text-emerald-600 border" : log.disposition === "No Answer" ? "bg-amber-400/15 text-amber-700 border" : "bg-[var(--surface-2)] border";
       const timeFormatted = log.created_at ? new Date(log.created_at).toLocaleString() : "—";
       const company = log.lead_company || log.company || "";
       const call1 = log.call1_source || log.call1 || "";
       const call2 = log.call2_destination || log.call2 || log.lead_phone || log.phone || "";
 
       return `
-        <tr class="hover:bg-zinc-500/5">
-          <td class="py-3 px-4 font-mono-code text-[11px] app-text-muted whitespace-nowrap">${this.escapeHtml(timeFormatted)}</td>
-          <td class="py-3 px-4">
-            <div class="font-semibold app-text-primary">${this.escapeHtml(log.lead_name)}</div>
-            <div class="text-[11px] app-text-muted">${this.escapeHtml(company)}</div>
-          </td>
+        <tr class="hover:bg-[var(--surface-2)] border-b">
+          <td class="py-3 px-4 font-mono-code text-[11px] opacity-60 whitespace-nowrap">${this.escapeHtml(timeFormatted)}</td>
+          <td class="py-3 px-4"><div class="font-medium">${this.escapeHtml(log.lead_name)}</div><div class="text-[11px] opacity-60">${this.escapeHtml(company)}</div></td>
           <td class="py-3 px-4 whitespace-nowrap">${modeBadge}</td>
-          <td class="py-3 px-4 font-mono-code text-[11px] app-text-secondary">
-            <span>${this.escapeHtml(call1)}</span> → <span class="text-emerald-400">${this.escapeHtml(call2)}</span>
-          </td>
-          <td class="py-3 px-4 font-mono-code text-[11px] app-text-muted">${this.escapeHtml(log.caller_id || "")}</td>
-          <td class="py-3 px-4 font-mono-code text-[11px] app-text-primary">${this.formatSeconds(log.duration_seconds || 0)}</td>
-          <td class="py-3 px-4">
-            <span class="px-2 py-0.5 rounded-md text-[11px] font-medium ${dispClass}">${this.escapeHtml(log.disposition)}</span>
-          </td>
-          <td class="py-3 px-4 max-w-xs truncate app-text-secondary">${this.escapeHtml(log.notes_snapshot || "")}</td>
+          <td class="py-3 px-4 font-mono-code text-[11px] opacity-70"><span>${this.escapeHtml(call1)}</span> → <span class="text-emerald-500">${this.escapeHtml(call2)}</span></td>
+          <td class="py-3 px-4 font-mono-code text-[11px] opacity-60">${this.escapeHtml(log.caller_id || "")}</td>
+          <td class="py-3 px-4 font-mono-code text-[11px]">${this.formatSeconds(log.duration_seconds || 0)}</td>
+          <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full text-[11px] border ${dispClass}">${this.escapeHtml(log.disposition)}</span></td>
+          <td class="py-3 px-4 max-w-xs truncate opacity-70 text-[11px]">${this.escapeHtml(log.notes_snapshot || "")}</td>
         </tr>
       `;
     }).join("");
@@ -1670,9 +2043,60 @@ class SonetelPowerDialerApp {
 
     const tokenPreview = document.getElementById("page-token-preview");
     if (tokenPreview) {
-      tokenPreview.textContent = s.access_token
-        ? `Active Bearer Token: ${s.access_token}`
-        : "No OAuth token cached yet (Local Smart Fallback Active)";
+      const realToken = s.sonetel_access_token || s.access_token || "";
+      const preview = s.sonetel_access_token_preview || (realToken ? realToken.slice(0, 18) + "..." : "");
+      const mode = s.is_live_token ? "🟢 LIVE" : "🟡 Local Bridge / Simulated";
+      const updatedAt = s.sonetel_token_updated_at ? ` (Updated: ${s.sonetel_token_updated_at})` : "";
+      tokenPreview.textContent = realToken
+        ? `${mode} Bearer Token: ${preview}${updatedAt} | Account: ${s.sonetel_account_id || "n/a"} | Auth Mode: ${s.sonetel_auth_mode || "sandbox"}`
+        : "No OAuth token cached yet (Local Smart Fallback Active — dialer works in simulation mode)";
+    }
+
+    // Sync auto_advance checkbox anywhere
+    const autoCheck = document.getElementById("auto-dial-next-checkbox");
+    if (autoCheck) {
+      const isAuto = String(s.auto_advance || s.auto_dial_next || "false") === "true";
+      autoCheck.checked = isAuto;
+    }
+
+    const healthEl = document.getElementById("settings-health-indicator");
+    if (healthEl) {
+      this.refreshHealthIndicator();
+    }
+  }
+
+  async refreshHealthIndicator() {
+    try {
+      const res = await fetch("/api/health", { cache: "no-store" });
+      const data = await res.json();
+      const el = document.getElementById("settings-health-indicator");
+      const el2 = document.getElementById("header-health-dot");
+      const el3 = document.getElementById("header-health-text");
+      if (el) {
+        el.textContent = `✅ API OK | ${data.leads_count} leads | v${data.version} | ${data.calling_mode}`;
+        el.className = "text-[11px] font-mono-code px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25";
+      }
+      if (el2) {
+        el2.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+        el2.title = `API Healthy — ${data.leads_count} leads | ${data.calling_mode}`;
+      }
+      if (el3) {
+        el3.textContent = `Live v${data.version} · ${data.leads_count} leads · ${data.is_live_token ? "🟢 LIVE" : "🟡 Sim"}`;
+        el3.className = "font-mono-code text-emerald-400";
+      }
+    } catch (_) {
+      const el = document.getElementById("settings-health-indicator");
+      const el2 = document.getElementById("header-health-dot");
+      const el3 = document.getElementById("header-health-text");
+      if (el) {
+        el.textContent = "⚠️ API unreachable";
+        el.className = "text-[11px] font-mono-code px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/25";
+      }
+      if (el2) el2.className = "w-2 h-2 rounded-full bg-rose-500";
+      if (el3) {
+        el3.textContent = "Offline";
+        el3.className = "font-mono-code text-rose-400";
+      }
     }
   }
 
@@ -1893,7 +2317,12 @@ class SonetelPowerDialerApp {
       { id: "map-col-name", key: "name", required: true },
       { id: "map-col-phone", key: "phone", required: true },
       { id: "map-col-company", key: "company", required: false },
-      { id: "map-col-notes", key: "notes", required: false }
+      { id: "map-col-notes", key: "notes", required: false },
+      { id: "map-col-role", key: "role", required: false },
+      { id: "map-col-email", key: "email", required: false },
+      { id: "map-col-location", key: "location", required: false },
+      { id: "map-col-priority", key: "priority", required: false },
+      { id: "map-col-tags", key: "tags", required: false }
     ];
 
     selects.forEach(({ id, key, required }) => {
@@ -1946,7 +2375,12 @@ class SonetelPowerDialerApp {
       name: document.getElementById("map-col-name")?.value || "",
       phone: document.getElementById("map-col-phone")?.value || "",
       company: document.getElementById("map-col-company")?.value || "",
-      notes: document.getElementById("map-col-notes")?.value || ""
+      notes: document.getElementById("map-col-notes")?.value || "",
+      role: document.getElementById("map-col-role")?.value || "",
+      email: document.getElementById("map-col-email")?.value || "",
+      location: document.getElementById("map-col-location")?.value || "",
+      priority: document.getElementById("map-col-priority")?.value || "",
+      tags: document.getElementById("map-col-tags")?.value || ""
     };
 
     const replaceCheckbox = document.getElementById("import-replace-checkbox");

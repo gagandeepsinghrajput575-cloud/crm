@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sonetel Power Dialer & Pipeline — macOS</title>
+  <title>Sonetel — Power Dialer</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -11,1258 +11,455 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'SF Pro Text', 'sans-serif'],
-            mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
+            sans: ['Sora','Inter','system-ui','sans-serif'],
+            serif: ['Instrument Serif','Georgia','serif'],
+            mono: ['Fragment Mono','JetBrains Mono','monospace'],
+            display: ['Syne','Sora','sans-serif'],
           }
         }
       }
     }
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/sip.js@0.21.2/dist/sip.min.js"></script>
+  <script src="https://unpkg.com/jssip@3.10.0/dist/jssip.min.js"></script>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
-<body class="h-screen w-screen flex flex-col overflow-hidden select-none" data-active-mode="callback">
+<body class="h-screen w-screen flex flex-col overflow-hidden antialiased" data-active-mode="callback">
 
-  <!-- ===================================================================== -->
-  <!-- TOP MACOS HEADER BAR WITH SINGLE SLIDER CALLING METHOD TOGGLE         -->
-  <!-- ===================================================================== -->
-  <header class="h-15 app-surface border-b px-4 py-2 flex items-center justify-between gap-3 shrink-0 z-30">
-    <!-- Left: macOS Window Controls + Brand + Navigation Tabs -->
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-1.5" title="macOS Window">
-        <span class="w-3 h-3 rounded-full bg-[#ff5f57] border border-black/20 inline-block"></span>
-        <span class="w-3 h-3 rounded-full bg-[#febc2e] border border-black/20 inline-block"></span>
-        <span class="w-3 h-3 rounded-full bg-[#28c840] border border-black/20 inline-block"></span>
-      </div>
-      <div class="h-4 w-[1px] bg-zinc-500/20"></div>
-      <div class="flex items-center gap-2">
-        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 via-indigo-500 to-violet-600 p-[1px] shadow">
-          <div class="w-full h-full bg-zinc-950 rounded-[7px] flex items-center justify-center text-white font-bold text-[11px]">
-            SN
-          </div>
+  <!-- HEADER -->
+  <header class="h-[64px] shrink-0 flex items-center justify-between px-4 md:px-5 border-b bg-[var(--surface-1)] z-30">
+    <div class="flex items-center gap-6">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-[10px] bg-[var(--accent)] flex items-center justify-center text-white font-bold text-[14px] tracking-tight">SN</div>
+        <div class="leading-none">
+          <div class="font-bold text-[15px] tracking-tight">Sonetel Dialer</div>
+          <div class="font-mono-code text-[10px] opacity-60 tracking-wide">POWER / PIPELINE</div>
         </div>
-        <span class="font-semibold text-sm tracking-tight app-text-primary hidden sm:inline">Sonetel Dialer</span>
+        <div class="hidden lg:flex items-center gap-2 ml-3 pl-3 border-l">
+          <span id="header-health-dot" class="w-2 h-2 rounded-full bg-zinc-400"></span>
+          <span id="header-health-text" class="font-mono-code text-[11px] opacity-70">Loading…</span>
+          <span id="settings-health-indicator" class="hidden"></span>
+        </div>
       </div>
 
-      <!-- Top Navigation Segmented Tabs (Instant Switching) -->
-      <nav class="flex items-center gap-1 bg-zinc-500/10 p-1 rounded-xl border app-border ml-2">
-        <button
-          type="button"
-          id="nav-btn-dialer"
-          onclick="window.app.switchView('dialer')"
-          class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5"
-        >
-          <span>📞 Active Dialer</span>
-          <span id="nav-badge-queued" class="font-mono-code text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400">0</span>
+      <nav class="flex items-center gap-1">
+        <button id="nav-btn-dialer" onclick="window.app.switchView('dialer')" class="nav-tab active">
+          Dialer <span id="nav-badge-queued" class="nav-badge">0</span>
         </button>
-        <button
-          type="button"
-          id="nav-btn-pipeline"
-          onclick="window.app.switchView('pipeline')"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
-        >
-          <span>📋 Pipeline Board</span>
-          <span id="nav-badge-pipeline" class="font-mono-code text-[10px] px-1.5 py-0.2 rounded bg-zinc-500/20 app-text-secondary">0</span>
+        <button id="nav-btn-pipeline" onclick="window.app.switchView('pipeline')" class="nav-tab">
+          Pipeline <span id="nav-badge-pipeline" class="nav-badge muted">0</span>
         </button>
-        <button
-          type="button"
-          id="nav-btn-history"
-          onclick="window.app.switchView('history')"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
-        >
-          <span>🕒 Call Log</span>
-          <span id="nav-badge-history" class="font-mono-code text-[10px] px-1.5 py-0.2 rounded bg-zinc-500/20 app-text-secondary">0</span>
+        <button id="nav-btn-history" onclick="window.app.switchView('history')" class="nav-tab">
+          History <span id="nav-badge-history" class="nav-badge muted">0</span>
         </button>
-        <button
-          type="button"
-          id="nav-btn-settings"
-          onclick="window.app.switchView('settings')"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-        >
-          <span>⚙️ Settings</span>
-        </button>
+        <button id="nav-btn-settings" onclick="window.app.switchView('settings')" class="nav-tab">Settings</button>
       </nav>
     </div>
 
-    <!-- Center: Dual Calling Method Single Slider Toggle + Dynamic Mode Badge -->
-    <div class="flex items-center gap-2.5 bg-zinc-500/5 px-2.5 py-1 rounded-2xl border app-border">
-      <!-- THE SINGLE SLIDER TOGGLE -->
-      <div
-        id="calling-mode-slider"
-        class="mode-slider-track"
-        data-mode="callback"
-        role="switch"
-        aria-checked="false"
-        aria-label="Toggle between Call Back and Internet VoIP mode"
-      >
-        <div class="mode-slider-thumb"></div>
-        <button
-          type="button"
-          class="mode-slider-option"
-          data-target="callback"
-          onclick="window.app.setCallingMode('callback')"
-        >
-          <span>📞</span>
-          <span>Call Back</span>
-        </button>
-        <button
-          type="button"
-          class="mode-slider-option"
-          data-target="voip"
-          onclick="window.app.setCallingMode('voip')"
-        >
-          <span>📡</span>
-          <span>Internet (VoIP)</span>
-        </button>
+    <div class="flex items-center gap-2.5">
+      <div class="hidden md:flex items-center gap-2 p-1 rounded-full bg-[var(--surface-2)] border">
+        <div id="calling-mode-slider" class="mode-slider" data-mode="callback" role="switch">
+          <div class="mode-thumb"></div>
+          <button data-target="callback" onclick="window.app.setCallingMode('callback')" class="mode-opt">📞 Callback</button>
+          <button data-target="voip" onclick="window.app.setCallingMode('voip')" class="mode-opt">📡 VoIP</button>
+        </div>
+        <div id="active-mode-badge" class="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--accent-soft)] text-[var(--accent)] border">
+          <span id="active-mode-badge-dot" class="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
+          <span id="active-mode-badge-text">Callback</span>
+        </div>
+        <div id="voip-submethod-container" class="hidden items-center gap-1 ml-1">
+          <button id="voip-opt-webrtc" onclick="window.app.setVoipSubMethod('webrtc')" class="text-[11px] px-2 py-1 rounded-full font-semibold bg-[var(--accent)] text-white">WebRTC</button>
+          <button id="voip-opt-sip" onclick="window.app.setVoipSubMethod('sip_api')" class="text-[11px] px-2 py-1 rounded-full font-medium opacity-60">SIP</button>
+        </div>
       </div>
 
-      <!-- Dynamic Active Mode Visual Badge -->
-      <div id="active-mode-badge" class="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all duration-300 bg-emerald-500/10 text-emerald-400 border-emerald-500/25">
-        <span id="active-mode-badge-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-        <span id="active-mode-badge-text">📞 Carrier Call Back</span>
-      </div>
-
-      <!-- VoIP Sub-Method Pill (Shown when Internet VoIP is active) -->
-      <div id="voip-submethod-container" class="hidden items-center gap-1 bg-indigo-500/10 border border-indigo-500/25 rounded-xl p-0.5 text-[11px]">
-        <button
-          type="button"
-          id="voip-opt-webrtc"
-          onclick="window.app.setVoipSubMethod('webrtc')"
-          class="px-2 py-0.5 rounded-lg font-medium transition-all bg-indigo-600 text-white"
-        >
-          WebRTC Headset
-        </button>
-        <button
-          type="button"
-          id="voip-opt-sip"
-          onclick="window.app.setVoipSubMethod('sip_api')"
-          class="px-2 py-0.5 rounded-lg font-medium transition-all text-indigo-300 hover:text-white"
-        >
-          SIP URI Leg
-        </button>
-      </div>
-    </div>
-
-    <!-- Right: Upload Calling List + Caller ID + Theme + Settings -->
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        onclick="window.app.openImportModal()"
-        class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all active:scale-[0.98]"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-        </svg>
-        <span>Upload Calling List</span>
+      <button onclick="window.app.openImportModal()" class="px-4 py-2 rounded-full text-[12px] font-semibold bg-[var(--accent)] text-white hover:opacity-90 transition-opacity flex items-center gap-1.5">
+        <span>↑</span> Upload List
       </button>
-
-      <button
-        type="button"
-        onclick="window.app.openLeadModal()"
-        class="px-2.5 py-2 rounded-xl text-xs font-medium app-elevated border hover:border-indigo-500/40 app-text-primary transition-all"
-        title="Add a single person manually"
-      >
-        + Add Person
+      <button onclick="window.app.openLeadModal()" class="px-3 py-2 rounded-full text-[12px] font-medium border bg-[var(--surface-2)] hover:bg-[var(--surface-3)]">+ Person</button>
+      <button onclick="window.app.toggleTheme()" id="theme-toggle-btn" class="w-9 h-9 rounded-full border bg-[var(--surface-2)] flex items-center justify-center hover:bg-[var(--surface-3)]">
+        <span id="theme-icon-dark">☾</span><span id="theme-icon-light" class="hidden">☀</span>
       </button>
-
-      <button
-        type="button"
-        onclick="window.app.toggleTheme()"
-        id="theme-toggle-btn"
-        class="p-2 rounded-xl app-elevated border hover:border-zinc-400/40 transition-colors app-text-secondary hover:app-text-primary"
-        title="Switch Dark / Light Appearance"
-      >
-        <svg id="theme-icon-dark" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-        </svg>
-        <svg id="theme-icon-light" class="w-4 h-4 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-        </svg>
-      </button>
-
-      <button
-        type="button"
-        onclick="window.app.toggleSettingsDrawer(true)"
-        class="p-2 rounded-xl app-elevated border hover:border-zinc-400/40 transition-colors app-text-secondary hover:app-text-primary"
-        title="Sonetel Credentials & Phone Settings"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      </button>
+      <button onclick="window.app.toggleSettingsDrawer(true)" class="w-9 h-9 rounded-full border bg-[var(--surface-2)] flex items-center justify-center hover:bg-[var(--surface-3)]">⚙</button>
     </div>
   </header>
 
-  <!-- ===================================================================== -->
-  <!-- MAIN WORKSPACE AREA                                                   -->
-  <!-- ===================================================================== -->
-  <main class="flex-1 flex flex-col overflow-hidden relative">
+  <main class="flex-1 flex flex-col overflow-hidden bg-[var(--bg)]">
 
-    <!-- =================================================================== -->
-    <!-- VIEW 1 (DEFAULT): PRACTICAL 3-COLUMN POWER DIALER & CONTACT DOSSIER -->
-    <!-- =================================================================== -->
-    <section id="view-dialer" class="flex-1 overflow-hidden p-4">
-      <div class="h-full grid grid-cols-12 gap-4 overflow-hidden">
+    <!-- DIALER VIEW -->
+    <section id="view-dialer" class="flex-1 overflow-hidden p-3 md:p-4">
+      <div class="h-full grid grid-cols-12 gap-4 overflow-hidden max-w-[1600px] mx-auto w-full">
 
-        <!-- =============================================================== -->
-        <!-- COLUMN 1 (LEFT, 3 COLS): UPLOADED CALLING LIST QUEUE            -->
-        <!-- =============================================================== -->
-        <div class="col-span-12 lg:col-span-3 app-surface border rounded-2xl flex flex-col overflow-hidden">
-          <div class="p-3.5 border-b app-border space-y-2.5 shrink-0">
+        <!-- LEFT: QUEUE -->
+        <div class="col-span-12 lg:col-span-3 flex flex-col rounded-[16px] border bg-[var(--surface-1)] overflow-hidden">
+          <div class="p-4 border-b space-y-3 shrink-0">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-bold uppercase tracking-wider app-text-primary">Calling List</span>
-              <span id="dialer-queue-count-badge" class="text-[11px] font-mono-code px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">
-                0 left
-              </span>
+              <h2 class="font-semibold text-[13px]">Calling Queue</h2>
+              <span id="dialer-queue-count-badge" class="font-mono-code text-[11px] px-2 py-1 rounded-full bg-[var(--surface-2)] border">0 total</span>
             </div>
-
-            <!-- Search inside Calling List -->
-            <input
-              type="text"
-              id="queue-search-input"
-              oninput="window.app.renderUpNextQueue()"
-              placeholder="Search name, company, phone..."
-              class="w-full px-3 py-1.5 rounded-xl text-xs app-elevated border app-text-primary focus:outline-none focus:border-indigo-500"
-            />
-
-            <!-- Filter Tabs: All | To Call | Done -->
-            <div class="grid grid-cols-3 gap-1 p-0.5 rounded-xl app-elevated border text-[11px]">
-              <button
-                type="button"
-                id="qfilter-all"
-                onclick="window.app.setQueueFilter('all')"
-                class="py-1 rounded-lg font-semibold bg-indigo-600 text-white"
-              >
-                All
-              </button>
-              <button
-                type="button"
-                id="qfilter-queued"
-                onclick="window.app.setQueueFilter('queued')"
-                class="py-1 rounded-lg font-medium app-text-secondary hover:app-text-primary"
-              >
-                To Call
-              </button>
-              <button
-                type="button"
-                id="qfilter-done"
-                onclick="window.app.setQueueFilter('done')"
-                class="py-1 rounded-lg font-medium app-text-secondary hover:app-text-primary"
-              >
-                Called
-              </button>
+            <input id="queue-search-input" oninput="window.app.debouncedQueueSearch()" placeholder="Search name, company, phone…" class="w-full px-3.5 py-2.5 rounded-[12px] text-[13px] bg-[var(--surface-2)] border focus:border-[var(--accent)] focus:outline-none" />
+            <div class="flex gap-1 p-1 rounded-full bg-[var(--surface-2)] border text-[11px] font-medium">
+              <button id="qfilter-all" onclick="window.app.setQueueFilter('all')" class="flex-1 py-1.5 rounded-full bg-[var(--surface-1)] shadow-sm font-semibold">All</button>
+              <button id="qfilter-queued" onclick="window.app.setQueueFilter('queued')" class="flex-1 py-1.5 rounded-full opacity-60 hover:opacity-100">To Call</button>
+              <button id="qfilter-done" onclick="window.app.setQueueFilter('done')" class="flex-1 py-1.5 rounded-full opacity-60 hover:opacity-100">Done</button>
             </div>
           </div>
-
-          <!-- Scrollable Contacts List -->
-          <div id="dialer-up-next-list" class="flex-1 overflow-y-auto p-2.5 space-y-1.5">
-            <!-- Populated by app.js -->
-          </div>
-
-          <!-- Bottom Upload Shortcut -->
-          <div class="p-3 border-t app-border shrink-0">
-            <button
-              type="button"
-              onclick="window.app.openImportModal()"
-              class="w-full py-2 px-3 rounded-xl app-elevated border hover:border-emerald-500/50 text-xs font-semibold text-emerald-400 flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <span>📂 Upload / Replace Calling List</span>
-            </button>
+          <div id="dialer-up-next-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+          <div class="p-3 border-t shrink-0">
+            <button onclick="window.app.openImportModal()" class="w-full py-2.5 rounded-[12px] border border-dashed text-[12px] font-medium hover:bg-[var(--surface-2)]">Upload / Replace List</button>
           </div>
         </div>
 
-        <!-- =============================================================== -->
-        <!-- COLUMN 2 (CENTER, 5 COLS): COMPLETE ON-SCREEN CONTACT DOSSIER   -->
-        <!-- =============================================================== -->
-        <div class="col-span-12 lg:col-span-5 flex flex-col gap-3.5 overflow-y-auto pr-1">
-
-          <!-- Top Contact Stepper & Hard-Lock Indicator -->
-          <div class="app-surface border rounded-2xl px-4 py-2.5 flex items-center justify-between gap-2 shrink-0">
+        <!-- CENTER: DOSSIER -->
+        <div class="col-span-12 lg:col-span-5 flex flex-col gap-3 overflow-y-auto">
+          <div class="flex items-center justify-between px-1 shrink-0">
             <div class="flex items-center gap-2">
-              <button
-                type="button"
-                onclick="window.app.stepLead(-1)"
-                class="px-3 py-1 rounded-lg app-elevated border hover:border-indigo-500/40 text-xs font-medium app-text-secondary hover:app-text-primary transition-colors"
-              >
-                ← Prev
-              </button>
-              <span id="dialer-position-indicator" class="font-mono-code text-xs font-bold app-text-primary px-1">
-                Person 1 of 10
-              </span>
-              <button
-                type="button"
-                onclick="window.app.stepLead(1)"
-                class="px-3 py-1 rounded-lg app-elevated border hover:border-indigo-500/40 text-xs font-medium app-text-secondary hover:app-text-primary transition-colors"
-              >
-                Next →
-              </button>
+              <button onclick="window.app.stepLead(-1)" class="w-8 h-8 rounded-full border bg-[var(--surface-1)] hover:bg-[var(--surface-2)] flex items-center justify-center">←</button>
+              <span id="dialer-position-indicator" class="font-mono-code text-[12px] font-medium">1 of 10</span>
+              <button onclick="window.app.stepLead(1)" class="w-8 h-8 rounded-full border bg-[var(--surface-1)] hover:bg-[var(--surface-2)] flex items-center justify-center">→</button>
             </div>
-
             <div class="flex items-center gap-2">
-              <span id="dialer-lock-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                🔒 Info Locked on Screen
-              </span>
-              <button
-                type="button"
-                onclick="window.app.openLeadModal(window.app.activeLeadId)"
-                class="px-2.5 py-1 rounded-lg app-elevated border hover:border-indigo-500/40 text-[11px] font-medium app-text-secondary hover:app-text-primary"
-              >
-                ✏️ Edit
-              </button>
+              <span id="dialer-lock-badge" class="text-[11px] font-medium px-2.5 py-1 rounded-full bg-[var(--surface-2)] border flex items-center gap-1">🔒 Locked</span>
+              <button onclick="window.app.openLeadModal(window.app.activeLeadId)" class="text-[11px] font-medium px-3 py-1 rounded-full border bg-[var(--surface-1)] hover:bg-[var(--surface-2)]">Edit</button>
             </div>
           </div>
 
-          <!-- COMPLETE CONTACT DOSSIER CARD (Shows 100% of Info for the Person Being Called) -->
-          <div class="app-surface border rounded-2xl p-5 relative overflow-hidden shrink-0">
-            <div id="dialer-ambient-bar" class="h-1.5 w-full absolute top-0 left-0 bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-500"></div>
-
-            <!-- Person Header -->
-            <div class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b app-border">
-              <div class="space-y-1">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span id="dialer-lead-stage-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
-                    Queued
-                  </span>
-                  <span id="dialer-lead-priority-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400">
-                    High Priority
-                  </span>
-                  <span id="dialer-lead-attempts" class="text-[11px] font-mono-code app-text-muted">
-                    Attempts: 0
-                  </span>
-                  <span id="dialer-lead-last-disp" class="hidden text-[11px] font-medium px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400"></span>
+          <div class="rounded-[20px] border bg-[var(--surface-1)] p-6 relative overflow-hidden">
+            <div id="dialer-ambient-bar" class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--accent)] to-[var(--accent-2)]"></div>
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-3 min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span id="dialer-lead-stage-badge" class="text-[11px] font-medium px-2.5 py-1 rounded-full border bg-[var(--surface-2)]">Queued</span>
+                  <span id="dialer-lead-priority-badge" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-400 text-black">High</span>
+                  <span id="dialer-lead-attempts" class="font-mono-code text-[11px] opacity-60">Calls 0</span>
+                  <span id="dialer-lead-last-disp" class="hidden text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-600 border"></span>
                 </div>
-
-                <h1 id="dialer-lead-name" class="text-2xl font-bold tracking-tight app-text-primary pt-0.5 select-text">
-                  Elena Rostova
-                </h1>
-
-                <div class="flex items-center flex-wrap gap-2 text-xs">
-                  <span id="dialer-lead-company" class="font-semibold text-indigo-400 text-sm select-text">Vanguard Cloud Systems</span>
-                  <span class="app-text-muted">•</span>
-                  <span id="dialer-lead-role" class="font-medium app-text-primary select-text">VP of Infrastructure</span>
+                <h1 id="dialer-lead-name" class="font-serif text-[36px] leading-[0.95] tracking-tight font-normal">Elena Rostova</h1>
+                <div class="flex items-center gap-2 text-[13px] opacity-80">
+                  <span id="dialer-lead-company" class="font-semibold">Vanguard Cloud</span>
+                  <span class="opacity-30">·</span>
+                  <span id="dialer-lead-role">VP Infrastructure</span>
                 </div>
               </div>
-
-              <div class="text-right space-y-1">
-                <div id="dialer-lead-localtime" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg app-elevated border font-mono-code text-xs app-text-secondary">
-                  🕒 10:30 AM · San Francisco, CA
-                </div>
-                <div id="dialer-lead-email" class="font-mono-code text-[11px] app-text-muted select-all block">
-                  elena.rostova@vanguardcloud.io
-                </div>
+              <div class="text-right space-y-1.5 shrink-0">
+                <div id="dialer-lead-localtime" class="inline-flex px-2.5 py-1 rounded-full bg-[var(--surface-2)] border font-mono-code text-[11px]">10:30 AM · SF</div>
+                <div id="dialer-lead-email" class="font-mono-code text-[11px] opacity-60 select-all">email</div>
               </div>
             </div>
 
-            <!-- ALL UPLOADED SPREADSHEET COLUMNS & CONTACT DATA GRID -->
-            <div class="pt-4 space-y-3">
+            <div class="mt-6 pt-5 border-t space-y-3">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-bold uppercase tracking-wider app-text-primary flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>All Contact Information on Screen</span>
-                </span>
-                <span id="dialer-fields-count-badge" class="text-[11px] font-mono-code px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
-                  All Fields
-                </span>
+                <h3 class="font-semibold text-[12px] opacity-80">Contact Details</h3>
+                <span id="dialer-fields-count-badge" class="font-mono-code text-[10px] px-2 py-1 rounded-full bg-[var(--surface-2)] border">0 fields</span>
               </div>
-
-              <!-- Dynamic Grid with EVERY column from the uploaded list -->
-              <div id="dialer-all-fields-grid" class="grid grid-cols-2 gap-2.5 text-xs">
-                <!-- Populated by app.js -->
-              </div>
-
-              <!-- Quick Inline Add Custom Field Bar (Add info while talking!) -->
-              <div class="pt-2 flex items-center gap-2">
-                <input
-                  type="text"
-                  id="quick-field-name"
-                  placeholder="+ Add field (e.g. Budget, Renewal Date)"
-                  class="flex-1 px-2.5 py-1.5 rounded-lg text-xs app-elevated border app-text-primary focus:outline-none focus:border-indigo-500"
-                />
-                <input
-                  type="text"
-                  id="quick-field-value"
-                  placeholder="Value (e.g. $50k, Nov 15)"
-                  class="flex-1 px-2.5 py-1.5 rounded-lg text-xs app-elevated border app-text-primary focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onclick="window.app.addQuickCustomField()"
-                  class="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-semibold shrink-0"
-                >
-                  + Save Info
-                </button>
+              <div id="dialer-all-fields-grid" class="grid grid-cols-2 gap-2.5"></div>
+              <div class="flex gap-2 pt-1">
+                <input id="quick-field-name" placeholder="Add field (Budget)" class="flex-1 px-3 py-2 rounded-[10px] text-[12px] bg-[var(--surface-2)] border focus:border-[var(--accent)] focus:outline-none" />
+                <input id="quick-field-value" placeholder="Value" class="flex-1 px-3 py-2 rounded-[10px] text-[12px] bg-[var(--surface-2)] border focus:border-[var(--accent)] focus:outline-none" />
+                <button onclick="window.app.addQuickCustomField()" class="px-3 py-2 rounded-[10px] bg-[var(--text-primary)] text-[var(--bg)] text-[12px] font-semibold">Save</button>
               </div>
             </div>
           </div>
 
-          <!-- CALL NOTES & TALKING POINTS BOX (Auto-Saves to SQLite) -->
-          <div class="app-surface border rounded-2xl p-4 flex-1 flex flex-col min-h-[210px]">
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b app-border">
+          <div class="rounded-[16px] border bg-[var(--surface-1)] p-4 flex-1 flex flex-col min-h-[200px]">
+            <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
-                <span class="text-xs font-bold uppercase tracking-wider app-text-primary">
-                  Notes for <span id="notes-contact-name-label" class="text-emerald-400">Elena Rostova</span>
-                </span>
-                <span id="notes-autosave-status" class="text-[11px] font-mono-code text-emerald-400">✓ Auto-saved</span>
+                <h3 class="font-semibold text-[12px]">Notes for <span id="notes-contact-name-label" class="text-[var(--accent)]">Elena</span></h3>
+                <span id="notes-autosave-status" class="font-mono-code text-[10px] text-emerald-500">Saved</span>
               </div>
-
-              <div class="flex items-center gap-1 flex-wrap">
-                <button type="button" onclick="window.app.insertNoteSnippet('• Left voicemail — requested callback')" class="text-[11px] px-2 py-0.5 rounded-md app-elevated border hover:border-indigo-500/40 app-text-secondary">+ Voicemail</button>
-                <button type="button" onclick="window.app.insertNoteSnippet('• Spoke with decision maker — interested, booked demo')" class="text-[11px] px-2 py-0.5 rounded-md app-elevated border hover:border-indigo-500/40 app-text-secondary">+ Interested</button>
-                <button type="button" onclick="window.app.insertNoteSnippet('• Asked to call back tomorrow morning')" class="text-[11px] px-2 py-0.5 rounded-md app-elevated border hover:border-indigo-500/40 app-text-secondary">+ Call Back Later</button>
-                <button type="button" onclick="window.app.insertNoteTimestamp()" class="text-[11px] px-2 py-0.5 rounded-md app-elevated border hover:border-indigo-500/40 app-text-secondary">+ Time</button>
+              <div class="flex gap-1">
+                <button onclick="window.app.insertNoteSnippet('• Voicemail left')" class="text-[10px] px-2 py-1 rounded-full border bg-[var(--surface-2)] hover:bg-[var(--surface-3)]">Voicemail</button>
+                <button onclick="window.app.insertNoteSnippet('• Interested, booked demo')" class="text-[10px] px-2 py-1 rounded-full border bg-[var(--surface-2)] hover:bg-[var(--surface-3)]">Interested</button>
+                <button onclick="window.app.insertNoteTimestamp()" class="text-[10px] px-2 py-1 rounded-full border bg-[var(--surface-2)]">Time</button>
               </div>
             </div>
-
-            <textarea
-              id="dialer-notes-textarea"
-              oninput="window.app.handleNotesInput(this.value)"
-              placeholder="Type call notes here while dialing or talking... Automatically saved to this person's record in pipeline.db."
-              class="flex-1 w-full bg-transparent resize-none text-xs leading-relaxed app-text-primary focus:outline-none font-sans select-text"
-            ></textarea>
-
-            <!-- Previous Call History for This Specific Contact -->
-            <div id="dialer-contact-history-strip" class="mt-2 pt-2 border-t app-border text-[11px] app-text-secondary space-y-1">
-            </div>
+            <textarea id="dialer-notes-textarea" oninput="window.app.handleNotesInput(this.value)" placeholder="Write call notes… auto-saved" class="flex-1 w-full bg-transparent resize-none text-[13px] leading-relaxed focus:outline-none"></textarea>
+            <div id="dialer-contact-history-strip" class="mt-3 pt-3 border-t text-[11px] space-y-1 opacity-70"></div>
           </div>
-
         </div>
 
-        <!-- =============================================================== -->
-        <!-- COLUMN 3 (RIGHT, 4 COLS): REAL PHONE HANDSET & OUTCOME CONSOLE  -->
-        <!-- =============================================================== -->
-        <div class="col-span-12 lg:col-span-4 flex flex-col gap-3.5 overflow-y-auto">
-
-          <!-- REAL PHONE HANDSET CARD -->
-          <div class="app-surface border rounded-2xl p-5 flex flex-col justify-between space-y-4">
-
-            <!-- Top Phone Status Bar: Sound Toggle & Caller ID -->
-            <div class="flex items-center justify-between gap-2 pb-3 border-b app-border text-xs">
-              <div class="flex items-center gap-1.5">
-                <span class="app-text-muted text-[11px]">Caller ID:</span>
-                <select
-                  id="header-caller-id-select"
-                  onchange="window.app.quickChangeCallerId(this.value)"
-                  class="app-elevated border rounded-lg px-2 py-1 font-mono-code text-[11px] app-text-primary focus:outline-none cursor-pointer"
-                >
-                  <option value="+14158904410">+1 415-890-4410</option>
+        <!-- RIGHT: HANDSET -->
+        <div class="col-span-12 lg:col-span-4 flex flex-col gap-3 overflow-y-auto">
+          <div class="rounded-[20px] border bg-[var(--surface-1)] p-5 space-y-4">
+            <div class="flex items-center justify-between text-[11px]">
+              <div class="flex items-center gap-2">
+                <span class="opacity-60">From</span>
+                <select id="header-caller-id-select" onchange="window.app.quickChangeCallerId(this.value)" class="px-2.5 py-1 rounded-full bg-[var(--surface-2)] border font-mono-code text-[11px] focus:outline-none">
+                  <option>+1 415-890-4410</option>
                 </select>
               </div>
-
-              <button
-                type="button"
-                id="btn-sound-toggle"
-                onclick="window.app.toggleSoundCue()"
-                class="px-2.5 py-1 rounded-lg app-elevated border text-[11px] font-medium text-emerald-400 flex items-center gap-1"
-                title="Gentle 'Ting' Chime Sound (No repeating ringtone buzz)"
-              >
-                <span id="sound-toggle-label">🔔 Ting Sound: ON</span>
-              </button>
+              <button id="btn-sound-toggle" onclick="window.app.toggleSoundCue()" class="px-2.5 py-1 rounded-full bg-[var(--surface-2)] border text-[11px]"><span id="sound-toggle-label">🔔 Sound on</span></button>
             </div>
 
-            <!-- Digital Phone Screen Display -->
-            <div class="p-4 rounded-2xl app-elevated border text-center space-y-2 relative overflow-hidden">
-              <div class="flex items-center justify-between text-[10px] font-mono-code app-text-muted">
-                <span id="phone-screen-mode-tag" class="text-emerald-400 font-semibold">📞 Call Back Mode</span>
-                <span id="call-state-label" class="uppercase font-bold tracking-wider app-text-secondary">READY TO DIAL</span>
+            <div class="rounded-[16px] bg-[#0F0F10] border p-4 text-center space-y-3">
+              <div class="flex justify-between text-[10px] font-mono-code uppercase tracking-widest opacity-60">
+                <span id="phone-screen-mode-tag" class="text-[var(--accent-2)]">Callback</span>
+                <span id="call-state-label">Ready</span>
               </div>
-
-              <!-- Target Person Name on Phone Screen -->
-              <div id="phone-screen-person-name" class="text-base font-bold app-text-primary truncate pt-1">
-                Elena Rostova
-              </div>
-
-              <!-- Target Phone Number (E.164) -->
+              <div id="phone-screen-person-name" class="font-semibold text-[15px] truncate">Elena Rostova</div>
               <div class="flex items-center justify-center gap-2">
-                <span id="dialer-lead-phone" class="font-mono-code text-2xl font-bold tracking-tight text-emerald-400 select-all">
-                  +14158912340
-                </span>
-                <button
-                  type="button"
-                  onclick="window.app.copyActivePhone()"
-                  class="px-2 py-0.5 rounded bg-zinc-500/15 hover:bg-zinc-500/25 text-[10px] app-text-secondary"
-                  title="Copy Number"
-                >
-                  Copy
-                </button>
+                <div id="dialer-lead-phone" class="font-mono-code text-[30px] font-medium tracking-tight text-white select-all">+14158912340</div>
+                <button onclick="window.app.copyActivePhone()" class="text-[10px] px-2 py-1 rounded-full bg-white/10 hover:bg-white/20">Copy</button>
               </div>
-              <div id="dialer-lead-rawphone" class="font-mono-code text-[11px] app-text-muted">
-                Uploaded as: (415) 891-2340
+              <div id="dialer-lead-rawphone" class="font-mono-code text-[11px] opacity-50">Raw: (415) 891-2340</div>
+              <div class="flex items-center justify-center gap-3 pt-2">
+                <canvas id="audio-spectrum-canvas" width="72" height="20" class="opacity-80"></canvas>
+                <div id="call-timer-display" class="font-mono-code text-[22px] font-medium">00:00</div>
+                <audio id="remote-audio" autoplay playsinline class="hidden"></audio>
               </div>
-
-              <!-- Live Timer & Subtle Voice Spectrum -->
-              <div class="pt-2 flex items-center justify-center gap-3">
-                <canvas id="audio-spectrum-canvas" width="88" height="26" class="rounded"></canvas>
-                <div id="call-timer-display" class="font-mono-code text-2xl font-bold tracking-tight app-text-primary">
-                  00:00
-                </div>
-              </div>
-
-              <!-- Route Summary Pill -->
-              <div class="pt-1 text-[10.5px] font-mono-code app-text-muted flex items-center justify-center gap-1.5 flex-wrap">
-                <span id="dialer-route-call1">+14155550199</span>
-                <span>→</span>
-                <span id="dialer-route-bridge" class="text-indigo-400">sonetel.com</span>
-                <span>→</span>
-                <span id="dialer-route-call2" class="text-emerald-400">+14158912340</span>
+              <div class="font-mono-code text-[10px] opacity-50 flex justify-center gap-1.5">
+                <span id="dialer-route-call1">+1415…</span><span>→</span><span id="dialer-route-bridge">sonetel</span><span>→</span><span id="dialer-route-call2">+1415…</span>
               </div>
             </div>
 
-            <!-- BIG PRIMARY PHONE CALL / HANG UP BUTTON -->
-            <div class="space-y-2.5">
-              <button
-                type="button"
-                id="btn-primary-dial"
-                onclick="window.app.handlePrimaryDialClick()"
-                class="w-full py-4 px-5 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-3 transition-all active:scale-[0.99]"
-              >
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                </svg>
-                <span id="btn-primary-dial-text">Call Elena Rostova</span>
-              </button>
+            <button id="btn-primary-dial" onclick="window.app.handlePrimaryDialClick()" class="w-full py-4 rounded-[14px] font-semibold text-[14px] bg-[var(--accent)] text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+              <span>●</span><span id="btn-primary-dial-text">Call Elena</span>
+            </button>
 
-              <!-- Secondary Phone Handset Controls: Mute, Keypad, Rec Audio, Native macOS Call, Skip -->
-              <div class="grid grid-cols-4 gap-2 text-xs">
-                <button
-                  type="button"
-                  id="btn-mute-mic"
-                  onclick="window.app.toggleMute()"
-                  class="py-2 px-2 rounded-xl app-elevated border hover:border-zinc-400/40 app-text-secondary font-medium text-center transition-colors"
-                >
-                  <span id="mute-mic-indicator">🎙️ Mic</span>
-                </button>
-
-                <button
-                  type="button"
-                  onclick="window.app.toggleKeypad()"
-                  class="py-2 px-2 rounded-xl app-elevated border hover:border-zinc-400/40 app-text-secondary font-medium text-center transition-colors"
-                >
-                  🔢 Keypad
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-record-call"
-                  onclick="window.app.toggleCallRecording()"
-                  class="py-2 px-2 rounded-xl app-elevated border hover:border-rose-500/40 app-text-secondary font-medium flex items-center justify-center gap-1 transition-colors"
-                >
-                  <span id="record-call-dot" class="w-2 h-2 rounded-full bg-rose-500"></span>
-                  <span id="record-call-label">Rec</span>
-                </button>
-
-                <a
-                  id="dialer-native-tel-link"
-                  href="tel:+14158912340"
-                  class="py-2 px-2 rounded-xl app-elevated border hover:border-indigo-500/40 text-indigo-400 font-medium text-center transition-colors"
-                  title="Place call using macOS FaceTime / Native Phone App"
-                >
-                  📱 macOS
-                </a>
-              </div>
-
-              <!-- Collapsible Touch-Tone Keypad Inside Phone Handset -->
-              <div id="dtmf-popover" class="hidden p-3 rounded-2xl app-elevated border space-y-2">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="app-text-muted">Touch-Tone Keypad</span>
-                  <span id="dtmf-digits-display" class="font-mono-code text-emerald-400 font-bold"></span>
-                </div>
-                <div class="grid grid-cols-3 gap-1.5">
-                  <button type="button" onclick="window.app.sendDtmf('1')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">1</button>
-                  <button type="button" onclick="window.app.sendDtmf('2')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">2</button>
-                  <button type="button" onclick="window.app.sendDtmf('3')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">3</button>
-                  <button type="button" onclick="window.app.sendDtmf('4')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">4</button>
-                  <button type="button" onclick="window.app.sendDtmf('5')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">5</button>
-                  <button type="button" onclick="window.app.sendDtmf('6')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">6</button>
-                  <button type="button" onclick="window.app.sendDtmf('7')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">7</button>
-                  <button type="button" onclick="window.app.sendDtmf('8')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">8</button>
-                  <button type="button" onclick="window.app.sendDtmf('9')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">9</button>
-                  <button type="button" onclick="window.app.sendDtmf('*')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">*</button>
-                  <button type="button" onclick="window.app.sendDtmf('0')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">0</button>
-                  <button type="button" onclick="window.app.sendDtmf('#')" class="py-2 rounded-xl app-surface border hover:border-indigo-500 font-mono-code text-sm font-bold">#</button>
-                </div>
-              </div>
-
-              <!-- Recorded Audio Memo Player -->
-              <div id="recorded-audio-strip" class="hidden pt-2 items-center justify-between gap-2 text-xs">
-                <audio id="recorded-audio-player" controls class="h-8 w-full"></audio>
-              </div>
+            <div class="grid grid-cols-4 gap-2 text-[11px]">
+              <button id="btn-mute-mic" onclick="window.app.toggleMute()" class="py-2 rounded-[10px] border bg-[var(--surface-2)] hover:bg-[var(--surface-3)]"><span id="mute-mic-indicator">Mic</span></button>
+              <button onclick="window.app.toggleKeypad()" class="py-2 rounded-[10px] border bg-[var(--surface-2)] hover:bg-[var(--surface-3)]">Keypad</button>
+              <button id="btn-record-call" onclick="window.app.toggleCallRecording()" class="py-2 rounded-[10px] border bg-[var(--surface-2)] flex justify-center gap-1"><span id="record-call-dot" class="w-1.5 h-1.5 rounded-full bg-red-500 mt-1"></span><span id="record-call-label">Rec</span></button>
+              <a id="dialer-native-tel-link" href="tel:" class="py-2 rounded-[10px] border bg-[var(--surface-2)] text-center hover:bg-[var(--surface-3)]">macOS</a>
             </div>
 
+            <div id="dtmf-popover" class="hidden p-3 rounded-[14px] bg-[var(--surface-2)] border space-y-2">
+              <div class="flex justify-between text-[11px]"><span>Keypad</span><span id="dtmf-digits-display" class="font-mono-code text-[var(--accent)]"></span></div>
+              <div class="grid grid-cols-3 gap-1.5">
+                <button onclick="window.app.sendDtmf('1')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">1</button>
+                <button onclick="window.app.sendDtmf('2')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">2</button>
+                <button onclick="window.app.sendDtmf('3')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">3</button>
+                <button onclick="window.app.sendDtmf('4')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">4</button>
+                <button onclick="window.app.sendDtmf('5')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">5</button>
+                <button onclick="window.app.sendDtmf('6')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">6</button>
+                <button onclick="window.app.sendDtmf('7')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">7</button>
+                <button onclick="window.app.sendDtmf('8')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">8</button>
+                <button onclick="window.app.sendDtmf('9')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">9</button>
+                <button onclick="window.app.sendDtmf('*')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">*</button>
+                <button onclick="window.app.sendDtmf('0')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">0</button>
+                <button onclick="window.app.sendDtmf('#')" class="py-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code">#</button>
+              </div>
+            </div>
+            <div id="recorded-audio-strip" class="hidden"><audio id="recorded-audio-player" controls class="w-full h-8"></audio></div>
           </div>
 
-          <!-- CALL OUTCOME & ADVANCE TO NEXT PERSON CARD -->
-          <div class="app-surface border rounded-2xl p-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-bold uppercase tracking-wider app-text-primary">Log Call Outcome</span>
-              <span id="selected-disposition-pill" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                Outcome: Answered
-              </span>
-            </div>
-
+          <div class="rounded-[16px] border bg-[var(--surface-1)] p-4 space-y-3">
+            <div class="flex justify-between items-center"><h3 class="font-semibold text-[12px]">Outcome</h3><span id="selected-disposition-pill" class="text-[11px] px-2.5 py-1 rounded-full bg-[var(--surface-2)] border">Answered</span></div>
             <div class="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                data-disp="Answered"
-                onclick="window.app.selectDisposition('Answered')"
-                class="disp-btn px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all"
-              >
-                <span class="flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span>Answered</span>
-                </span>
-                <kbd>1</kbd>
-              </button>
-
-              <button
-                type="button"
-                data-disp="No Answer"
-                onclick="window.app.selectDisposition('No Answer')"
-                class="disp-btn px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all"
-              >
-                <span class="flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                  <span>No Answer</span>
-                </span>
-                <kbd>2</kbd>
-              </button>
-
-              <button
-                type="button"
-                data-disp="Busy"
-                onclick="window.app.selectDisposition('Busy')"
-                class="disp-btn px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all"
-              >
-                <span class="flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-orange-400"></span>
-                  <span>Busy</span>
-                </span>
-                <kbd>3</kbd>
-              </button>
-
-              <button
-                type="button"
-                data-disp="Wrong Number"
-                onclick="window.app.selectDisposition('Wrong Number')"
-                class="disp-btn px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all"
-              >
-                <span class="flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-rose-400"></span>
-                  <span>Wrong Number</span>
-                </span>
-                <kbd>4</kbd>
-              </button>
+              <button data-disp="Answered" onclick="window.app.selectDisposition('Answered')" class="disp-btn selected"><span>Answered</span><kbd>1</kbd></button>
+              <button data-disp="No Answer" onclick="window.app.selectDisposition('No Answer')" class="disp-btn"><span>No Answer</span><kbd>2</kbd></button>
+              <button data-disp="Busy" onclick="window.app.selectDisposition('Busy')" class="disp-btn"><span>Busy</span><kbd>3</kbd></button>
+              <button data-disp="Wrong Number" onclick="window.app.selectDisposition('Wrong Number')" class="disp-btn"><span>Wrong #</span><kbd>4</kbd></button>
             </div>
-
-            <!-- Auto-Dial Checkbox -->
-            <label class="flex items-center gap-2 text-xs app-text-secondary cursor-pointer pt-1">
-              <input
-                type="checkbox"
-                id="auto-dial-next-checkbox"
-                onchange="window.app.toggleAutoDialSetting(this.checked)"
-                class="rounded border-zinc-600 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span>Auto-call next person immediately when moving to next</span>
-            </label>
-
-            <!-- Primary Save Outcome & Move to Next Button -->
-            <div class="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                id="btn-hangup-next"
-                onclick="window.app.hangUpAndMoveToNext()"
-                class="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-indigo-600/25 transition-all active:scale-[0.99]"
-              >
-                <span>Save Outcome &amp; Load Next Person →</span>
-              </button>
-
-              <button
-                type="button"
-                onclick="window.app.skipToNextLead()"
-                class="py-3 px-3 rounded-xl app-elevated border hover:border-zinc-400/40 text-xs font-medium app-text-secondary hover:app-text-primary"
-                title="Skip to next person without logging a call"
-              >
-                Skip
-              </button>
+            <label class="flex items-center gap-2 text-[11px]"><input type="checkbox" id="auto-dial-next-checkbox" onchange="window.app.toggleAutoDialSetting(this.checked)" /> Auto-call next</label>
+            <div class="flex gap-2">
+              <button id="btn-hangup-next" onclick="window.app.hangUpAndMoveToNext()" class="flex-1 py-3 rounded-[12px] bg-[var(--text-primary)] text-[var(--bg)] font-semibold text-[12px]">Save & Next →</button>
+              <button onclick="window.app.skipToNextLead()" class="px-4 py-3 rounded-[12px] border bg-[var(--surface-2)] text-[12px]">Skip</button>
             </div>
           </div>
 
-          <!-- Collapsible Sonetel API Request Inspector -->
-          <details class="app-surface border rounded-2xl p-3 text-xs">
-            <summary class="cursor-pointer font-semibold app-text-secondary flex items-center justify-between">
-              <span>🔍 View Live Sonetel API Request Payload</span>
-              <span class="font-mono-code text-[10px] app-text-muted">sonetel.com</span>
-            </summary>
-            <pre id="sonetel-api-inspector" class="mt-2 max-h-40 overflow-auto rounded-xl app-elevated border p-2.5 font-mono-code text-[10.5px] leading-relaxed text-indigo-300 select-text"></pre>
-          </details>
-
-        </div>
-
-      </div>
-    </section>
-
-    <!-- =================================================================== -->
-    <!-- VIEW 2: KANBAN PIPELINE BOARD                                       -->
-    <!-- =================================================================== -->
-    <section id="view-pipeline" class="hidden flex-1 flex flex-col overflow-hidden p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-4 shrink-0">
-        <div>
-          <h1 class="text-lg font-semibold tracking-tight app-text-primary flex items-center gap-2.5">
-            <span>Kanban Pipeline Board</span>
-            <span id="pipeline-total-pill" class="text-xs font-mono-code px-2.5 py-0.5 rounded-full app-elevated border app-text-secondary">0 Contacts</span>
-          </h1>
-          <p class="text-xs app-text-muted mt-0.5">
-            Drag cards across columns or click <span class="text-emerald-400 font-semibold">📞 Call</span> on any card to load their full info in the Active Dialer.
-          </p>
-        </div>
-
-        <div class="flex items-center gap-2.5">
-          <input
-            type="text"
-            id="pipeline-search-input"
-            oninput="window.app.renderKanban()"
-            placeholder="Search name, company, +E.164..."
-            class="px-3 py-1.5 rounded-xl text-xs app-elevated border focus:outline-none focus:border-indigo-500 w-60 app-text-primary"
-          />
-
-          <select
-            id="pipeline-priority-filter"
-            onchange="window.app.renderKanban()"
-            class="px-2.5 py-1.5 rounded-xl text-xs app-elevated border focus:outline-none app-text-primary cursor-pointer"
-          >
-            <option value="">All Priorities</option>
-            <option value="High">High Priority</option>
-            <option value="Medium">Medium Priority</option>
-            <option value="Low">Low Priority</option>
-          </select>
-
-          <button
-            type="button"
-            onclick="window.app.resetDemoData()"
-            class="px-3 py-1.5 rounded-xl text-xs app-elevated border hover:border-zinc-400/40 app-text-secondary hover:app-text-primary transition-colors"
-          >
-            Reset Sample Data
-          </button>
-        </div>
-      </div>
-
-      <div id="kanban-board" class="flex-1 grid grid-cols-5 gap-3.5 overflow-x-auto overflow-y-hidden pb-1 min-w-[1040px]">
-      </div>
-    </section>
-
-    <!-- =================================================================== -->
-    <!-- VIEW 3: CALL HISTORY & EXPORTS                                      -->
-    <!-- =================================================================== -->
-    <section id="view-history" class="hidden flex-1 flex flex-col overflow-hidden p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-4 shrink-0">
-        <div>
-          <h1 class="text-lg font-semibold tracking-tight app-text-primary">Call History &amp; CSV Exports</h1>
-          <p class="text-xs app-text-muted mt-0.5">
-            Every outbound call session, mode (<code class="font-mono-code">Call Back</code> vs <code class="font-mono-code">Internet VoIP</code>), duration, and disposition stored in <code class="font-mono-code">pipeline.db</code>.
-          </p>
-        </div>
-        <div class="flex items-center gap-2.5">
-          <a
-            href="/api/export/leads.csv"
-            download="sonetel_pipeline_leads.csv"
-            class="px-3 py-1.5 rounded-xl text-xs font-medium app-elevated border hover:border-zinc-400/40 app-text-primary flex items-center gap-1.5"
-          >
-            <span>⬇️ Export Contacts CSV</span>
-          </a>
-          <a
-            href="/api/export/calls.csv"
-            download="sonetel_call_history.csv"
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5"
-          >
-            <span>⬇️ Export Call Logs CSV</span>
-          </a>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5 mb-4 shrink-0">
-        <div class="app-surface border rounded-2xl p-3.5">
-          <div class="text-[11px] app-text-muted">Total Calls Logged</div>
-          <div id="kpi-total-calls" class="text-2xl font-bold font-mono-code mt-1 app-text-primary">0</div>
-        </div>
-        <div class="app-surface border rounded-2xl p-3.5">
-          <div class="text-[11px] app-text-muted">Connect Rate (Answered)</div>
-          <div id="kpi-connect-rate" class="text-2xl font-bold font-mono-code mt-1 text-emerald-400">0%</div>
-        </div>
-        <div class="app-surface border rounded-2xl p-3.5">
-          <div class="text-[11px] app-text-muted">Carrier Call Back Calls</div>
-          <div id="kpi-callback-calls" class="text-2xl font-bold font-mono-code mt-1 text-teal-400">0</div>
-        </div>
-        <div class="app-surface border rounded-2xl p-3.5">
-          <div class="text-[11px] app-text-muted">Internet (VoIP) Calls</div>
-          <div id="kpi-voip-calls" class="text-2xl font-bold font-mono-code mt-1 text-indigo-400">0</div>
-        </div>
-      </div>
-
-      <div class="flex-1 app-surface border rounded-2xl overflow-hidden flex flex-col">
-        <div class="overflow-y-auto flex-1">
-          <table class="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr class="border-b app-border text-[11px] uppercase tracking-wider app-text-muted app-elevated sticky top-0">
-                <th class="py-3 px-4">Timestamp</th>
-                <th class="py-3 px-4">Contact &amp; Company</th>
-                <th class="py-3 px-4">Mode</th>
-                <th class="py-3 px-4">Routing (call1 → call2)</th>
-                <th class="py-3 px-4">Caller ID</th>
-                <th class="py-3 px-4">Duration</th>
-                <th class="py-3 px-4">Disposition</th>
-                <th class="py-3 px-4">Notes Snapshot</th>
-              </tr>
-            </thead>
-            <tbody id="call-history-tbody" class="divide-y app-border">
-            </tbody>
-          </table>
+          <details class="rounded-[12px] border bg-[var(--surface-1)] p-3 text-[11px]"><summary class="cursor-pointer font-medium flex justify-between"><span>API Inspector</span><span class="opacity-50 font-mono-code">sonetel</span></summary><pre id="sonetel-api-inspector" class="mt-3 p-3 rounded-[10px] bg-[#0F0F10] text-[10px] font-mono-code overflow-auto max-h-40"></pre></details>
         </div>
       </div>
     </section>
 
-    <!-- =================================================================== -->
-    <!-- VIEW 4: FULL SETTINGS PAGE                                          -->
-    <!-- =================================================================== -->
-    <section id="view-settings" class="hidden flex-1 overflow-y-auto p-6">
-      <div class="max-w-3xl mx-auto space-y-6">
-        <div>
-          <h1 class="text-lg font-semibold tracking-tight app-text-primary">Sonetel Account &amp; Calling Configuration</h1>
-          <p class="text-xs app-text-muted mt-0.5">
-            Configure your Sonetel OAuth2 credentials, physical forwarding number for Call Back mode, SIP URI for Internet (VoIP) mode, and outbound Caller IDs.
-          </p>
+    <!-- PIPELINE -->
+    <section id="view-pipeline" class="hidden flex-1 flex flex-col p-4 overflow-hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h1 class="font-bold text-[18px]">Pipeline <span id="pipeline-total-pill" class="ml-2 font-mono-code text-[11px] px-2.5 py-1 rounded-full border bg-[var(--surface-1)]">0</span></h1>
+        <div class="flex gap-2">
+          <input id="pipeline-search-input" oninput="window.app.renderKanban()" placeholder="Search…" class="px-3 py-2 rounded-full text-[12px] border bg-[var(--surface-1)]" />
+          <select id="pipeline-priority-filter" onchange="window.app.renderKanban()" class="px-3 py-2 rounded-full text-[12px] border bg-[var(--surface-1)]"><option value="">All</option><option>High</option><option>Medium</option><option>Low</option></select>
         </div>
+      </div>
+      <div id="kanban-board" class="flex-1 grid grid-cols-5 gap-3 overflow-x-auto min-w-[1000px]"></div>
+    </section>
 
-        <div class="space-y-5">
-          <div class="app-surface border rounded-2xl p-5 space-y-4">
-            <div class="flex items-center justify-between border-b app-border pb-3">
-              <div>
-                <h2 class="text-sm font-semibold app-text-primary">1. Sonetel Account Credentials (OAuth2)</h2>
-                <p class="text-xs app-text-muted">Exchanges credentials for a Bearer token against <code class="font-mono-code">https://sonetel.com</code></p>
-              </div>
-              <span id="settings-oauth-badge" class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">
-                Ready
-              </span>
-            </div>
+    <!-- HISTORY -->
+    <section id="view-history" class="hidden flex-1 flex flex-col p-4 overflow-hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h1 class="font-bold text-[18px]">Call History</h1>
+        <div class="flex gap-2"><a href="/api/export/leads.csv" class="px-3 py-2 rounded-full border text-[12px] bg-[var(--surface-1)]">Leads CSV</a><a href="/api/export/calls.csv" class="px-3 py-2 rounded-full bg-[var(--accent)] text-white text-[12px]">Logs CSV</a></div>
+      </div>
+      <div class="grid grid-cols-4 gap-3 mb-4">
+        <div class="rounded-[14px] border bg-[var(--surface-1)] p-4"><div class="text-[10px] uppercase tracking-widest opacity-60">Total Calls</div><div id="kpi-total-calls" class="font-mono-code text-[24px] font-bold">0</div></div>
+        <div class="rounded-[14px] border bg-[var(--surface-1)] p-4"><div class="text-[10px] uppercase tracking-widest opacity-60">Connect Rate</div><div id="kpi-connect-rate" class="font-mono-code text-[24px] font-bold">0%</div></div>
+        <div class="rounded-[14px] border bg-[var(--surface-1)] p-4"><div class="text-[10px] uppercase tracking-widest opacity-60">Callback</div><div id="kpi-callback-calls" class="font-mono-code text-[24px] font-bold">0</div></div>
+        <div class="rounded-[14px] border bg-[var(--surface-1)] p-4"><div class="text-[10px] uppercase tracking-widest opacity-60">VoIP</div><div id="kpi-voip-calls" class="font-mono-code text-[24px] font-bold">0</div></div>
+      </div>
+      <div class="flex-1 rounded-[14px] border bg-[var(--surface-1)] overflow-hidden flex flex-col"><div class="flex-1 overflow-auto"><table class="w-full text-[12px]"><thead class="sticky top-0 bg-[var(--surface-2)] border-b text-[10px] uppercase tracking-widest opacity-60"><tr><th class="p-3">Time</th><th class="p-3">Contact</th><th class="p-3">Mode</th><th class="p-3">Route</th><th class="p-3">ID</th><th class="p-3">Dur</th><th class="p-3">Disp</th><th class="p-3">Notes</th></tr></thead><tbody id="call-history-tbody"></tbody></table></div></div>
+    </section>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-medium app-text-secondary mb-1">Sonetel Account Email</label>
-                <input type="email" id="page-sonetel-email" class="w-full px-3 py-2 rounded-xl text-xs app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" placeholder="you@company.com" />
-              </div>
-              <div>
-                <label class="block text-xs font-medium app-text-secondary mb-1">Sonetel Password</label>
-                <input type="password" id="page-sonetel-password" class="w-full px-3 py-2 rounded-xl text-xs app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" placeholder="••••••••••••" />
-              </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div class="text-[11px] app-text-muted font-mono-code truncate max-w-md" id="page-token-preview">
-                Token: Ready (Local SQLite Persistence)
-              </div>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  onclick="window.app.syncSonetelNumbers()"
-                  class="px-3 py-2 rounded-xl text-xs font-medium app-elevated border hover:border-indigo-500/40 app-text-primary transition-colors"
-                >
-                  🔄 Sync Account Caller IDs
-                </button>
-                <button
-                  type="button"
-                  onclick="window.app.authenticateSonetel('page')"
-                  class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-                >
-                  Authenticate &amp; Fetch OAuth Token
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="app-surface border rounded-2xl p-5 space-y-4">
-            <div class="border-b app-border pb-3">
-              <h2 class="text-sm font-semibold app-text-primary">2. Dual Calling Method Endpoints</h2>
-              <p class="text-xs app-text-muted">Defines <code class="font-mono-code">call1</code> for Call Back mode vs. Internet (VoIP) mode.</p>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-medium app-text-secondary mb-1">
-                  📞 Agent Forwarding Phone (<code class="font-mono-code">call1</code> in Call Back Mode)
-                </label>
-                <input type="text" id="page-agent-phone" class="w-full px-3 py-2 rounded-xl text-xs font-mono-code app-elevated border app-text-primary focus:outline-none focus:border-emerald-500" placeholder="+14155550199" />
-                <p class="text-[11px] app-text-muted mt-1">Sonetel rings this mobile/landline first, then bridges to the prospect.</p>
-              </div>
-
-              <div>
-                <label class="block text-xs font-medium app-text-secondary mb-1">
-                  📡 Sonetel SIP User URI / Username (Internet VoIP Mode)
-                </label>
-                <input type="text" id="page-sip-uri" class="w-full px-3 py-2 rounded-xl text-xs font-mono-code app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" placeholder="sip:alex.mercer@acmecorp.sonetel.com" />
-                <p class="text-[11px] app-text-muted mt-1">Used for Browser WebRTC headset audio or Option B API SIP leg.</p>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-              <div>
-                <label class="block text-xs font-medium app-text-secondary mb-1">Outbound Caller ID (Sonetel Business Number)</label>
-                <select id="page-caller-id" class="w-full px-3 py-2 rounded-xl text-xs font-mono-code app-elevated border app-text-primary focus:outline-none">
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs font-medium app-text-secondary mb-1">Default Country Code (E.164 Sanitizer)</label>
-                <select id="page-default-cc" class="w-full px-3 py-2 rounded-xl text-xs font-mono-code app-elevated border app-text-primary focus:outline-none">
-                  <option value="+1">+1 (United States / Canada)</option>
-                  <option value="+44">+44 (United Kingdom)</option>
-                  <option value="+46">+46 (Sweden)</option>
-                  <option value="+49">+49 (Germany)</option>
-                  <option value="+33">+33 (France)</option>
-                  <option value="+91">+91 (India)</option>
-                  <option value="+61">+61 (Australia)</option>
-                  <option value="+65">+65 (Singapore)</option>
-                  <option value="+81">+81 (Japan)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="pt-3 flex justify-end">
-              <button
-                type="button"
-                onclick="window.app.saveSettingsFromPage()"
-                class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition-colors"
-              >
-                Save Settings to pipeline.db
-              </button>
-            </div>
-          </div>
+    <!-- SETTINGS -->
+    <section id="view-settings" class="hidden flex-1 overflow-auto p-6">
+      <div class="max-w-2xl mx-auto space-y-6">
+        <h1 class="font-bold text-[20px]">Settings</h1>
+        <div class="rounded-[16px] border bg-[var(--surface-1)] p-5 space-y-4">
+          <div class="flex justify-between border-b pb-3"><h2 class="font-semibold text-[13px]">Sonetel OAuth</h2><span id="settings-oauth-badge" class="text-[11px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-600 border">Ready</span></div>
+          <div class="grid grid-cols-2 gap-3"><input id="page-sonetel-email" placeholder="Email" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] text-[12px]" /><input id="page-sonetel-password" type="password" placeholder="Password" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] text-[12px]" /></div>
+          <div class="flex justify-between items-center"><div id="page-token-preview" class="font-mono-code text-[11px] opacity-60 truncate max-w-[320px]">No token</div><div class="flex gap-2"><button onclick="window.app.syncSonetelNumbers()" class="px-3 py-2 rounded-full border text-[12px]">Sync IDs</button><button onclick="window.app.authenticateSonetel('page')" class="px-4 py-2 rounded-full bg-black text-white text-[12px]">Authenticate</button></div></div>
+        </div>
+        <div class="rounded-[16px] border bg-[var(--surface-1)] p-5 space-y-4">
+          <h2 class="font-semibold text-[13px] border-b pb-3">Endpoints</h2>
+          <div class="grid grid-cols-2 gap-3"><input id="page-agent-phone" placeholder="Agent phone" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code text-[12px]" /><input id="page-sip-uri" placeholder="SIP URI" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code text-[12px]" /></div>
+          <div class="grid grid-cols-2 gap-3"><select id="page-caller-id" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code text-[12px]"></select><select id="page-default-cc" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code text-[12px]"><option value="+1">+1 US</option><option value="+44">+44 UK</option><option value="+46">+46 SE</option><option value="+91">+91 IN</option></select></div>
+          <div class="flex justify-end"><button onclick="window.app.saveSettingsFromPage()" class="px-5 py-2.5 rounded-full bg-[var(--accent)] text-white text-[12px] font-semibold">Save</button></div>
         </div>
       </div>
     </section>
-
   </main>
 
-  <!-- ===================================================================== -->
-  <!-- SLIDE-OVER SETTINGS DRAWER                                            -->
-  <!-- ===================================================================== -->
-  <div id="settings-drawer-backdrop" class="hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40" onclick="window.app.toggleSettingsDrawer(false)"></div>
-  <aside id="settings-drawer" class="fixed top-0 right-0 bottom-0 w-full max-w-md app-surface border-l z-50 transform translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
-    <div class="p-4 border-b app-border flex items-center justify-between">
-      <div>
-        <h3 class="text-sm font-semibold app-text-primary">Sonetel &amp; Dialer Settings</h3>
-        <p class="text-[11px] app-text-muted">Saved locally in SQLite (<code class="font-mono-code">pipeline.db</code>)</p>
-      </div>
-      <button type="button" onclick="window.app.toggleSettingsDrawer(false)" class="p-1.5 rounded-lg app-elevated border app-text-secondary hover:app-text-primary">
-        ✕
-      </button>
+  <!-- DRAWER -->
+  <div id="settings-drawer-backdrop" class="hidden fixed inset-0 bg-black/50 z-40" onclick="window.app.toggleSettingsDrawer(false)"></div>
+  <aside id="settings-drawer" class="fixed top-0 right-0 bottom-0 w-[380px] bg-[var(--surface-1)] border-l z-50 translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="p-4 border-b flex justify-between items-center"><h3 class="font-semibold">Settings</h3><button onclick="window.app.toggleSettingsDrawer(false)" class="w-8 h-8 rounded-full border">✕</button></div>
+    <div class="flex-1 overflow-auto p-4 space-y-4 text-[12px]">
+      <div class="p-3 rounded-[12px] bg-[var(--surface-2)] border space-y-2"><div class="font-medium">Mode</div><div class="grid grid-cols-2 gap-2"><button id="drawer-mode-callback" onclick="window.app.setCallingMode('callback')" class="py-2 rounded-full border font-medium">Callback</button><button id="drawer-mode-voip" onclick="window.app.setCallingMode('voip')" class="py-2 rounded-full border font-medium">VoIP</button></div></div>
+      <input id="drawer-sonetel-email" placeholder="Sonetel email" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]" />
+      <input id="drawer-sonetel-password" type="password" placeholder="Password" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]" />
+      <button onclick="window.app.authenticateSonetel('drawer')" class="w-full py-2 rounded-full border">Verify</button>
+      <hr />
+      <input id="drawer-agent-phone" placeholder="Agent phone" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code" />
+      <input id="drawer-sip-uri" placeholder="SIP URI" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code" />
+      <select id="drawer-voip-method" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]"><option value="webrtc">WebRTC Headset</option><option value="sip_api">SIP Leg</option></select>
+      <select id="drawer-caller-id" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code"></select>
+      <div class="flex gap-2"><input id="drawer-new-cid-number" placeholder="+1…" class="flex-1 px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] font-mono-code" /><input id="drawer-new-cid-label" placeholder="Label" class="flex-1 px-2 py-2 rounded-[10px] border bg-[var(--surface-2)]" /><button onclick="window.app.addCustomCallerId()" class="px-3 py-2 rounded-[10px] bg-black text-white">Add</button></div>
+      <select id="drawer-default-cc" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code"><option value="+1">+1 US</option><option value="+44">+44 UK</option><option value="+46">+46 SE</option><option value="+91">+91 IN</option></select>
     </div>
-
-    <div class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-      <div class="app-elevated border rounded-2xl p-3.5 space-y-2">
-        <div class="font-semibold app-text-primary">Active Calling Mode</div>
-        <div class="grid grid-cols-2 gap-2">
-          <button type="button" id="drawer-mode-callback" onclick="window.app.setCallingMode('callback')" class="py-2 px-3 rounded-xl border font-medium flex items-center justify-center gap-1.5">
-            <span>📞 Call Back</span>
-          </button>
-          <button type="button" id="drawer-mode-voip" onclick="window.app.setCallingMode('voip')" class="py-2 px-3 rounded-xl border font-medium flex items-center justify-center gap-1.5">
-            <span>📡 Internet VoIP</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="space-y-3">
-        <div class="font-semibold app-text-primary">Sonetel Account Credentials</div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Sonetel Email</label>
-          <input type="email" id="drawer-sonetel-email" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" />
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Sonetel Password</label>
-          <input type="password" id="drawer-sonetel-password" placeholder="Enter password to fetch live OAuth token" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" />
-        </div>
-        <button
-          type="button"
-          onclick="window.app.authenticateSonetel('drawer')"
-          class="w-full py-2 px-2.5 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 font-medium transition-colors"
-        >
-          Verify OAuth2 Token
-        </button>
-      </div>
-
-      <hr class="app-border" />
-
-      <div class="space-y-3">
-        <div class="font-semibold app-text-primary">Routing &amp; Caller ID</div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Agent Phone Number (for Call Back Mode <code class="font-mono-code">call1</code>)</label>
-          <input type="text" id="drawer-agent-phone" class="w-full px-3 py-2 rounded-xl font-mono-code app-elevated border app-text-primary focus:outline-none focus:border-emerald-500" />
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Sonetel SIP User URI / Username (for Internet VoIP Mode)</label>
-          <input type="text" id="drawer-sip-uri" class="w-full px-3 py-2 rounded-xl font-mono-code app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" />
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Internet (VoIP) Routing Method</label>
-          <select id="drawer-voip-method" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none">
-            <option value="webrtc">Option A: SIP / WebRTC Direct Browser Headset</option>
-            <option value="sip_api">Option B: API SIP Leg (call1 = SIP URI -> call2)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Outbound Caller ID</label>
-          <select id="drawer-caller-id" class="w-full px-3 py-2 rounded-xl font-mono-code app-elevated border app-text-primary focus:outline-none">
-          </select>
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Add Custom Registered Sonetel Caller ID</label>
-          <div class="flex gap-2">
-            <input type="text" id="drawer-new-cid-number" placeholder="+14155550123" class="flex-1 px-2.5 py-1.5 rounded-xl font-mono-code app-elevated border app-text-primary" />
-            <input type="text" id="drawer-new-cid-label" placeholder="US Sales Line" class="flex-1 px-2.5 py-1.5 rounded-xl app-elevated border app-text-primary" />
-            <button type="button" onclick="window.app.addCustomCallerId()" class="px-3 py-1.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white font-medium">Add</button>
-          </div>
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Default Country Code (for E.164 Sanitization)</label>
-          <select id="drawer-default-cc" class="w-full px-3 py-2 rounded-xl font-mono-code app-elevated border app-text-primary focus:outline-none">
-            <option value="+1">+1 (US / Canada)</option>
-            <option value="+44">+44 (United Kingdom)</option>
-            <option value="+46">+46 (Sweden)</option>
-            <option value="+49">+49 (Germany)</option>
-            <option value="+33">+33 (France)</option>
-            <option value="+91">+91 (India)</option>
-            <option value="+61">+61 (Australia)</option>
-            <option value="+65">+65 (Singapore)</option>
-            <option value="+81">+81 (Japan)</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div class="p-4 border-t app-border flex items-center justify-end gap-2">
-      <button type="button" onclick="window.app.toggleSettingsDrawer(false)" class="px-4 py-2 rounded-xl app-elevated border text-xs font-medium app-text-secondary">
-        Close
-      </button>
-      <button type="button" onclick="window.app.saveSettingsFromDrawer()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold">
-        Save Changes
-      </button>
-    </div>
+    <div class="p-4 border-t flex justify-end gap-2"><button onclick="window.app.toggleSettingsDrawer(false)" class="px-4 py-2 rounded-full border">Close</button><button onclick="window.app.saveSettingsFromDrawer()" class="px-4 py-2 rounded-full bg-[var(--accent)] text-white">Save</button></div>
   </aside>
 
-  <!-- ===================================================================== -->
-  <!-- UPLOAD CALLING LIST MODAL (CSV / EXCEL FILE OR PASTE FROM SPREADSHEET)-->
-  <!-- ===================================================================== -->
-  <div id="import-modal" class="hidden fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-    <div class="app-surface border rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-      <div class="p-4 border-b app-border flex items-center justify-between">
-        <div>
-          <h3 class="text-sm font-semibold app-text-primary">Upload Calling List (CSV, Excel, or Paste Rows)</h3>
-          <p class="text-[11px] app-text-muted">Every column in your spreadsheet is saved and displayed on screen while dialing each person</p>
-        </div>
-        <button type="button" onclick="window.app.closeImportModal()" class="p-1.5 rounded-lg app-elevated border app-text-secondary hover:app-text-primary">✕</button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Option 1: Drop CSV / Excel File -->
-          <div
-            id="import-dropzone"
-            ondragover="event.preventDefault(); this.classList.add('border-emerald-500', 'bg-emerald-500/5');"
-            ondragleave="this.classList.remove('border-emerald-500', 'bg-emerald-500/5');"
-            ondrop="window.app.handleFileDrop(event)"
-            class="border-2 border-dashed app-border rounded-2xl p-5 text-center transition-all cursor-pointer hover:border-emerald-500/60 flex flex-col justify-center"
-            onclick="document.getElementById('import-file-input').click()"
-          >
+  <!-- IMPORT MODAL -->
+  <div id="import-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-3xl max-h-[90vh] rounded-[20px] border bg-[var(--surface-1)] flex flex-col overflow-hidden">
+      <div class="p-4 border-b flex justify-between items-center"><div><h3 class="font-semibold text-[14px]">Upload Calling List</h3><p class="text-[11px] opacity-60">CSV, Excel, or paste — all columns preserved</p></div><button onclick="window.app.closeImportModal()" class="w-8 h-8 rounded-full border">✕</button></div>
+      <div class="flex-1 overflow-auto p-4 space-y-4 text-[12px]">
+        <div class="grid grid-cols-2 gap-3">
+          <div id="import-dropzone" ondrop="window.app.handleFileDrop(event)" ondragover="event.preventDefault()" class="border-2 border-dashed rounded-[16px] p-6 text-center cursor-pointer hover:bg-[var(--surface-2)]" onclick="document.getElementById('import-file-input').click()">
             <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="window.app.handleFileSelect(this.files[0])" />
-            <div class="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center mx-auto mb-2">
-              📂
-            </div>
-            <div class="font-semibold app-text-primary">Click to Choose <code class="font-mono-code">.csv</code> or <code class="font-mono-code">.xlsx</code> File</div>
-            <div class="text-[11px] app-text-muted mt-1">Or drag and drop your spreadsheet here</div>
-            <div class="mt-3">
-              <button
-                type="button"
-                onclick="event.stopPropagation(); window.app.loadBuiltInSampleCsv();"
-                class="px-3 py-1.5 rounded-xl bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/25 font-medium text-[11px]"
-              >
-                ✨ Load Sample Calling List (6 Global Leads)
-              </button>
-            </div>
+            <div class="font-semibold">Drop CSV/Excel or click</div>
+            <div class="text-[11px] opacity-60 mt-1">Or drag from Finder</div>
+            <button onclick="event.stopPropagation(); window.app.loadBuiltInSampleCsv();" class="mt-3 px-3 py-1.5 rounded-full bg-[var(--surface-2)] border text-[11px]">Load Sample (6 leads)</button>
           </div>
-
-          <!-- Option 2: Paste directly from Excel / Google Sheets -->
-          <div class="app-elevated border rounded-2xl p-4 flex flex-col justify-between space-y-2">
-            <div class="font-semibold app-text-primary">Or Paste Rows from Excel / Google Sheets</div>
-            <textarea
-              id="import-paste-textarea"
-              rows="4"
-              placeholder="Name, Phone, Company, Deal Value, Notes&#10;John Doe, (415) 555-0192, Acme Inc, $25k, Call at 2pm&#10;Sarah Lee, +44 20 7946 0192, Global Co, £40k, VIP"
-              class="w-full p-2.5 rounded-xl app-surface border font-mono-code text-[11px] app-text-primary focus:outline-none focus:border-indigo-500 resize-none"
-            ></textarea>
-            <button
-              type="button"
-              onclick="window.app.handlePastePreview()"
-              class="w-full py-1.5 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 font-semibold text-[11px]"
-            >
-              Parse Pasted Rows →
-            </button>
-          </div>
+          <div class="rounded-[16px] border bg-[var(--surface-2)] p-3 space-y-2"><div class="font-medium">Paste from Sheets</div><textarea id="import-paste-textarea" rows="4" placeholder="Name, Phone, Company..." class="w-full p-2.5 rounded-[10px] border bg-[var(--surface-1)] font-mono-code text-[11px]"></textarea><button onclick="window.app.handlePastePreview()" class="w-full py-2 rounded-full bg-black text-white text-[11px]">Parse →</button></div>
         </div>
+        <div id="import-mapping-section" class="hidden space-y-3 pt-3 border-t">
+          <div class="flex justify-between"><span class="font-medium">Ready: <span id="import-filename-label" class="font-mono-code"></span> (<span id="import-rowcount-label">0</span>)</span><select id="import-default-cc" class="px-2 py-1 rounded-full border text-[11px] font-mono-code"><option value="+1">+1 US</option><option value="+44">+44 UK</option><option value="+46">+46 SE</option><option value="+91">+91 IN</option></select></div>
+          <div class="grid grid-cols-4 gap-2">
+            <select id="map-col-name" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <select id="map-col-phone" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <select id="map-col-company" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <select id="map-col-notes" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <select id="map-col-role" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <select id="map-col-email" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <select id="map-col-location" class="px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select>
+            <div class="flex gap-1"><select id="map-col-priority" class="flex-1 px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select><select id="map-col-tags" class="flex-1 px-2 py-2 rounded-[10px] border bg-[var(--surface-2)] text-[11px]"></select></div>
+          </div>
+          <label class="flex items-center gap-2 text-[11px]"><input type="checkbox" id="import-replace-checkbox" checked /> Replace existing & load #1</label>
+          <div class="rounded-[12px] border overflow-hidden max-h-32 overflow-auto"><table class="w-full text-[11px]"><thead class="bg-[var(--surface-2)] border-b"><tr><th class="p-2">Name</th><th class="p-2">Phone</th><th class="p-2">E.164</th><th class="p-2">Company</th></tr></thead><tbody id="import-preview-tbody"></tbody></table></div>
+        </div>
+      </div>
+      <div class="p-3 border-t flex justify-end gap-2"><button onclick="window.app.closeImportModal()" class="px-4 py-2 rounded-full border">Cancel</button><button id="btn-commit-import" onclick="window.app.commitImport()" disabled class="px-5 py-2 rounded-full bg-[var(--accent)] text-white disabled:opacity-40">Load & Dial #1</button></div>
+    </div>
+  </div>
 
-        <div id="import-mapping-section" class="hidden space-y-4 pt-2 border-t app-border">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="font-semibold app-text-primary">
-              Ready to Import: <span id="import-filename-label" class="text-emerald-400 font-mono-code"></span> (<span id="import-rowcount-label">0</span> people)
-            </div>
+  <!-- LEAD MODAL -->
+  <div id="lead-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-lg rounded-[20px] border bg-[var(--surface-1)] overflow-hidden">
+      <div class="p-4 border-b flex justify-between items-center"><h3 id="lead-modal-title" class="font-semibold">Add Person</h3><button onclick="window.app.closeLeadModal()" class="w-8 h-8 rounded-full border">✕</button></div>
+      <div class="p-4 space-y-3 text-[12px]"><input type="hidden" id="lead-form-id" /><div class="grid grid-cols-2 gap-2"><input id="lead-form-name" placeholder="Full name *" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]" /><input id="lead-form-phone" placeholder="Phone *" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)] font-mono-code" /></div><div class="grid grid-cols-2 gap-2"><input id="lead-form-company" placeholder="Company" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]" /><input id="lead-form-role" placeholder="Role" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]" /></div><div class="grid grid-cols-3 gap-2"><select id="lead-form-stage" class="px-2 py-2.5 rounded-[10px] border bg-[var(--surface-2)]"><option>Queued</option><option>In Progress</option><option>Connected / Answered</option><option>No Answer / Voicemail</option><option>Follow Up / Closed</option></select><select id="lead-form-priority" class="px-2 py-2.5 rounded-[10px] border bg-[var(--surface-2)]"><option>High</option><option>Medium</option><option>Low</option></select><input id="lead-form-location" placeholder="Location" class="px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]" /></div><textarea id="lead-form-notes" rows="3" placeholder="Notes" class="w-full px-3 py-2.5 rounded-[10px] border bg-[var(--surface-2)]"></textarea></div>
+      <div class="p-3 border-t flex justify-between"><button id="btn-delete-lead" onclick="window.app.deleteCurrentModalLead()" class="hidden px-3 py-2 rounded-full bg-red-500/15 text-red-500 border text-[12px]">Delete</button><div class="flex gap-2 ml-auto"><button onclick="window.app.closeLeadModal()" class="px-4 py-2 rounded-full border">Cancel</button><button onclick="window.app.saveLeadModal()" class="px-5 py-2 rounded-full bg-[var(--accent)] text-white">Save</button></div></div>
+    </div>
+  </div>
+
+  <!-- PROFESSIONAL CALL POP — Like Kixie / PhoneBurner / Ringover -->
+  <div id="call-pop-overlay" class="hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[60] flex items-center justify-center p-4">
+    <div id="call-pop-card" class="w-full max-w-[640px] rounded-[20px] border bg-[var(--surface-1)] shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden animate-pop-in">
+      <!-- Top bar: live indicator + timer -->
+      <div class="h-1 w-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent-2)]"></div>
+      <div class="p-5 pb-3 flex items-start justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div id="call-pop-avatar" class="w-12 h-12 rounded-full bg-[var(--accent)] text-white flex items-center justify-center font-bold text-[16px]">ER</div>
+          <div>
             <div class="flex items-center gap-2">
-              <span class="text-[11px] app-text-muted">Default Country Code:</span>
-              <select id="import-default-cc" onchange="window.app.refreshImportPreview()" class="px-2 py-1 rounded app-elevated border font-mono-code text-xs app-text-primary">
-                <option value="+1">+1 (US/CA)</option>
-                <option value="+44">+44 (UK)</option>
-                <option value="+46">+46 (SE)</option>
-                <option value="+49">+49 (DE)</option>
-                <option value="+91">+91 (IN)</option>
-              </select>
+              <h2 id="call-pop-name" class="font-serif text-[22px] leading-none">Elena Rostova</h2>
+              <span id="call-pop-live-badge" class="hidden px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold animate-pulse">● LIVE</span>
+              <span id="call-pop-dialing-badge" class="px-2 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-bold">Dialing…</span>
+            </div>
+            <div class="flex items-center gap-2 mt-1 text-[12px]">
+              <span id="call-pop-company" class="font-semibold">Vanguard Cloud</span>
+              <span class="opacity-30">·</span>
+              <span id="call-pop-role" class="opacity-70">VP Infrastructure</span>
+              <span id="call-pop-location-badge" class="ml-1 px-2 py-0.5 rounded-full bg-[var(--surface-2)] border text-[10px]">SF · 10:30 AM</span>
             </div>
           </div>
+        </div>
+        <div class="text-right">
+          <div id="call-pop-timer" class="font-mono-code text-[28px] font-bold leading-none">00:00</div>
+          <div id="call-pop-mode" class="text-[10px] uppercase tracking-widest opacity-60 mt-1">Callback via +1 415…</div>
+          <button onclick="window.app.hideCallPop()" class="mt-2 w-7 h-7 rounded-full border bg-[var(--surface-2)] hover:bg-[var(--surface-3)]">✕</button>
+        </div>
+      </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label class="block text-[11px] app-text-secondary mb-1">Person Name Column *</label>
-              <select id="map-col-name" onchange="window.app.refreshImportPreview()" class="w-full px-2.5 py-1.5 rounded-lg app-elevated border app-text-primary"></select>
-            </div>
-            <div>
-              <label class="block text-[11px] app-text-secondary mb-1">Phone Number Column *</label>
-              <select id="map-col-phone" onchange="window.app.refreshImportPreview()" class="w-full px-2.5 py-1.5 rounded-lg app-elevated border app-text-primary"></select>
-            </div>
-            <div>
-              <label class="block text-[11px] app-text-secondary mb-1">Company Column</label>
-              <select id="map-col-company" onchange="window.app.refreshImportPreview()" class="w-full px-2.5 py-1.5 rounded-lg app-elevated border app-text-primary"></select>
-            </div>
-            <div>
-              <label class="block text-[11px] app-text-secondary mb-1">Notes Column</label>
-              <select id="map-col-notes" onchange="window.app.refreshImportPreview()" class="w-full px-2.5 py-1.5 rounded-lg app-elevated border app-text-primary"></select>
-            </div>
+      <!-- Phone + quick actions -->
+      <div class="px-5 pb-3">
+        <div class="rounded-[14px] bg-[#0F0F10] border p-3 flex items-center justify-between">
+          <div>
+            <div class="text-[10px] uppercase tracking-widest opacity-50">Calling</div>
+            <div id="call-pop-phone" class="font-mono-code text-[20px] font-medium text-white select-all">+1 415-891-2340</div>
+            <div id="call-pop-rawphone" class="font-mono-code text-[11px] opacity-50">Raw: (415) 891-2340</div>
           </div>
-
-          <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between">
-            <label class="flex items-center gap-2.5 cursor-pointer text-xs font-medium app-text-primary">
-              <input type="checkbox" id="import-replace-checkbox" checked class="rounded border-zinc-600 text-emerald-600 focus:ring-emerald-500" />
-              <span>Replace existing list with this uploaded list &amp; load Person #1 onto the dialer screen immediately</span>
-            </label>
-            <span class="text-[11px] font-mono-code text-emerald-400">✓ All columns shown on screen</span>
-          </div>
-
-          <div class="app-elevated border rounded-xl overflow-hidden">
-            <div class="max-h-40 overflow-y-auto">
-              <table class="w-full text-left border-collapse text-[11px]">
-                <thead>
-                  <tr class="border-b app-border app-text-muted">
-                    <th class="py-2 px-3">Name</th>
-                    <th class="py-2 px-3">Raw Phone</th>
-                    <th class="py-2 px-3">Cleaned E.164</th>
-                    <th class="py-2 px-3">Company</th>
-                    <th class="py-2 px-3">Info Fields</th>
-                  </tr>
-                </thead>
-                <tbody id="import-preview-tbody" class="divide-y app-border"></tbody>
-              </table>
-            </div>
+          <div class="flex gap-1.5">
+            <button onclick="window.app.copyCallPopPhone()" class="px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-[11px]">Copy</button>
+            <button onclick="window.app.openLeadModal(window.app.getDisplayedLead()?.id)" class="px-3 py-2 rounded-full bg-white text-black text-[11px] font-semibold">Edit</button>
           </div>
         </div>
       </div>
 
-      <div class="p-4 border-t app-border flex items-center justify-end gap-2">
-        <button type="button" onclick="window.app.closeImportModal()" class="px-4 py-2 rounded-xl app-elevated border text-xs font-medium app-text-secondary">
-          Cancel
-        </button>
-        <button
-          type="button"
-          id="btn-commit-import"
-          onclick="window.app.commitImport()"
-          disabled
-          class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold shadow-md transition-all"
-        >
-          🚀 Load List &amp; Start Dialing Person #1
-        </button>
+      <!-- Tabs -->
+      <div class="px-5 flex gap-1 p-1 rounded-full bg-[var(--surface-2)] border w-fit text-[11px] font-medium">
+        <button id="call-pop-tab-overview" onclick="window.app.switchCallPopTab('overview')" class="px-3 py-1.5 rounded-full bg-[var(--surface-1)] shadow-sm font-semibold">Overview</button>
+        <button id="call-pop-tab-excel" onclick="window.app.switchCallPopTab('excel')" class="px-3 py-1.5 rounded-full opacity-60 hover:opacity-100">Excel Data <span id="call-pop-excel-count" class="ml-1 px-1.5 py-0.5 rounded-full bg-[var(--accent)] text-white text-[10px]">0</span></button>
+        <button id="call-pop-tab-history" onclick="window.app.switchCallPopTab('history')" class="px-3 py-1.5 rounded-full opacity-60 hover:opacity-100">History</button>
       </div>
-    </div>
-  </div>
 
-  <!-- ===================================================================== -->
-  <!-- ADD / EDIT SINGLE CONTACT MODAL                                       -->
-  <!-- ===================================================================== -->
-  <div id="lead-modal" class="hidden fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-    <div class="app-surface border rounded-2xl w-full max-w-lg flex flex-col shadow-2xl overflow-hidden">
-      <div class="p-4 border-b app-border flex items-center justify-between">
-        <h3 id="lead-modal-title" class="text-sm font-semibold app-text-primary">Add New Person</h3>
-        <button type="button" onclick="window.app.closeLeadModal()" class="p-1.5 rounded-lg app-elevated border app-text-secondary">✕</button>
-      </div>
-      <div class="p-5 space-y-3.5 text-xs">
-        <input type="hidden" id="lead-form-id" />
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Full Name *</label>
-            <input type="text" id="lead-form-name" placeholder="Elena Rostova" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Phone Number (Auto E.164) *</label>
-            <input type="text" id="lead-form-phone" placeholder="(415) 891-2340" class="w-full px-3 py-2 rounded-xl font-mono-code app-elevated border app-text-primary focus:outline-none focus:border-emerald-500" />
+      <!-- Content panes -->
+      <div class="p-5 pt-3 max-h-[320px] overflow-y-auto space-y-4">
+        <!-- Overview -->
+        <div id="call-pop-pane-overview" class="space-y-3">
+          <div class="grid grid-cols-2 gap-2" id="call-pop-fields-grid"></div>
+          <div class="rounded-[12px] border bg-[var(--surface-2)] p-3">
+            <div class="flex justify-between items-center mb-2"><span class="text-[11px] font-semibold">Live Notes</span><span class="text-[10px] opacity-60">Auto-saved</span></div>
+            <textarea id="call-pop-notes" oninput="window.app.handleCallPopNotes(this.value)" placeholder="Type call notes here… will sync to main dossier" class="w-full min-h-[64px] bg-transparent text-[12px] leading-relaxed focus:outline-none resize-none"></textarea>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Company</label>
-            <input type="text" id="lead-form-company" placeholder="Vanguard Cloud" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Role / Title</label>
-            <input type="text" id="lead-form-role" placeholder="VP of Infrastructure" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none" />
-          </div>
+        <!-- Excel -->
+        <div id="call-pop-pane-excel" class="hidden space-y-2">
+          <div class="text-[11px] opacity-60">All columns from your uploaded Excel/CSV — 100% preserved</div>
+          <div id="call-pop-excel-grid" class="grid grid-cols-2 gap-2"></div>
         </div>
-        <div class="grid grid-cols-3 gap-3">
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Pipeline Stage</label>
-            <select id="lead-form-stage" class="w-full px-2.5 py-2 rounded-xl app-elevated border app-text-primary">
-              <option value="Queued">Queued</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Connected / Answered">Connected / Answered</option>
-              <option value="No Answer / Voicemail">No Answer / Voicemail</option>
-              <option value="Follow Up / Closed">Follow Up / Closed</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Priority</label>
-            <select id="lead-form-priority" class="w-full px-2.5 py-2 rounded-xl app-elevated border app-text-primary">
-              <option value="High">High</option>
-              <option value="Medium" selected>Medium</option>
-              <option value="Low">Low</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-[11px] app-text-secondary mb-1">Location</label>
-            <input type="text" id="lead-form-location" placeholder="San Francisco, CA" class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none" />
-          </div>
-        </div>
-        <div>
-          <label class="block text-[11px] app-text-secondary mb-1">Call Notes</label>
-          <textarea id="lead-form-notes" rows="3" placeholder="Context, talking points..." class="w-full px-3 py-2 rounded-xl app-elevated border app-text-primary focus:outline-none"></textarea>
+        <!-- History -->
+        <div id="call-pop-pane-history" class="hidden space-y-2">
+          <div id="call-pop-history-list" class="space-y-2"></div>
         </div>
       </div>
-      <div class="p-4 border-t app-border flex items-center justify-between">
-        <button type="button" id="btn-delete-lead" onclick="window.app.deleteCurrentModalLead()" class="hidden px-3 py-2 rounded-xl bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 text-xs font-medium">
-          Delete Contact
-        </button>
-        <div class="flex items-center gap-2 ml-auto">
-          <button type="button" onclick="window.app.closeLeadModal()" class="px-4 py-2 rounded-xl app-elevated border text-xs font-medium app-text-secondary">Cancel</button>
-          <button type="button" onclick="window.app.saveLeadModal()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold">Save Contact</button>
+
+      <!-- Bottom outcome bar (like Kixie Outcome Tab) -->
+      <div class="p-4 border-t bg-[var(--surface-2)] flex items-center justify-between gap-3">
+        <div class="flex gap-1.5">
+          <button onclick="window.app.selectDisposition('Answered'); window.app.hangUpAndMoveToNext()" class="px-3 py-2 rounded-full bg-emerald-500 text-white text-[11px] font-semibold">✓ Answered</button>
+          <button onclick="window.app.selectDisposition('No Answer'); window.app.hangUpAndMoveToNext()" class="px-3 py-2 rounded-full bg-[var(--surface-1)] border text-[11px]">No Answer</button>
+          <button onclick="window.app.selectDisposition('Busy'); window.app.hangUpAndMoveToNext()" class="px-3 py-2 rounded-full bg-[var(--surface-1)] border text-[11px]">Busy</button>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="window.app.hideCallPop()" class="px-4 py-2 rounded-full border bg-[var(--surface-1)] text-[11px]">Minimize</button>
+          <button id="call-pop-primary-action" onclick="window.app.handleCallPopPrimary()" class="px-5 py-2 rounded-full bg-[var(--accent)] text-white text-[11px] font-semibold">Save & Next →</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Toast Notification Container -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
-
+  <div id="toast-container" class="fixed bottom-4 right-4 z-[70] flex flex-col gap-2 pointer-events-none"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

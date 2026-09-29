@@ -1,174 +1,239 @@
-/* ==========================================================================
-   Sonetel Power Dialer & Pipeline — macOS Minimalist Dark/Light Theme (v5.0)
-   ========================================================================== */
+/* Sonetel Power Dialer — Nice & Functional v7
+   Clean, calm, professional — not brutalist
+   Palette: Ink #0F0F10, Surface #18181B, Accent Indigo #6366F1, Teal #14B8A6
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Fragment+Mono&family=Syne:wght@600;700&display=swap');
 
 :root {
-  --bg-primary: #09090b;
-  --bg-surface: #121216;
-  --bg-elevated: #18181f;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --accent-callback: #10b981;
-  --accent-voip: #6366f1;
+  --bg: #0F0F10;
+  --surface-1: #18181B;
+  --surface-2: #232326;
+  --surface-3: #2A2A30;
+  --border: #2A2A30;
+  --border-strong: #3F3F47;
+  --text-primary: #FAFAF9;
+  --text-secondary: #A1A1AA;
+  --text-muted: #71717A;
+  --accent: #6366F1;
+  --accent-soft: rgba(99,102,241,0.12);
+  --accent-2: #14B8A6;
+  --accent-2-soft: rgba(20,184,166,0.12);
+  --signal: #F59E0B;
+  --rose: #F43F5E;
 }
 
 html.light {
-  --bg-primary: #f4f4f7;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f8f9fb;
-  --border-subtle: rgba(0, 0, 0, 0.1);
-  --text-primary: #09090b;
-  --text-secondary: #52525b;
-  --text-muted: #71717a;
+  --bg: #FAF9F6;
+  --surface-1: #FFFFFF;
+  --surface-2: #F4F4F5;
+  --surface-3: #E4E4E7;
+  --border: #E4E4E7;
+  --border-strong: #D4D4D8;
+  --text-primary: #18181B;
+  --text-secondary: #71717A;
+  --text-muted: #A1A1AA;
 }
+
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
 body {
-  background-color: var(--bg-primary);
+  background: var(--bg);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: "Sora", Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.font-mono-code {
-  font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
-}
+.font-mono-code { font-family: "Fragment Mono", monospace !important; }
 
-.app-surface {
-  background-color: var(--bg-surface);
-  border-color: var(--border-subtle);
-}
+/* Surfaces */
+.bg-\[var\(--bg\)\] { background: var(--bg); }
+.bg-\[var\(--surface-1\)\] { background: var(--surface-1); }
+.bg-\[var\(--surface-2\)\] { background: var(--surface-2); }
+.bg-\[var\(--surface-3\)\] { background: var(--surface-3); }
+.border { border-color: var(--border); }
 
-.app-elevated {
-  background-color: var(--bg-elevated);
-  border-color: var(--border-subtle);
-}
-
-.app-border {
-  border-color: var(--border-subtle);
-}
-
-.app-text-primary {
-  color: var(--text-primary);
-}
-
-.app-text-secondary {
+/* Nav tabs — underline active, not pill */
+.nav-tab {
+  position: relative;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
   color: var(--text-secondary);
 }
-
-.app-text-muted {
-  color: var(--text-muted);
+.nav-tab:hover { background: var(--surface-2); color: var(--text-primary); }
+.nav-tab.active {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
+.nav-badge {
+  font-family: "Fragment Mono", monospace;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  background: var(--text-primary);
+  color: var(--bg);
+  margin-left: 6px;
+  font-weight: 600;
+}
+.nav-badge.muted { background: var(--surface-3); color: var(--text-secondary); }
 
-/* ==========================================================================
-   Single Slider Calling Mode Switch (Call Back vs Internet VoIP)
-   ========================================================================== */
-.mode-slider-track {
+/* Mode slider — soft segmented */
+.mode-slider {
   position: relative;
-  display: inline-grid;
+  display: grid;
   grid-template-columns: 1fr 1fr;
-  align-items: center;
-  padding: 3px;
-  border-radius: 9999px;
-  background: rgba(24, 24, 31, 0.9);
-  border: 1px solid var(--border-subtle);
-  width: 286px;
+  width: 220px;
   height: 36px;
-  user-select: none;
-}
-
-html.light .mode-slider-track {
-  background: #e4e4e7;
-}
-
-.mode-slider-thumb {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc(50% - 3px);
+  background: var(--surface-1);
   border-radius: 9999px;
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-              background 0.25s ease;
-  z-index: 1;
+  padding: 3px;
+  border: 1px solid var(--border);
 }
-
-.mode-slider-track[data-mode="callback"] .mode-slider-thumb {
-  transform: translateX(0%);
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.4);
+.mode-thumb {
+  position: absolute;
+  top: 3px; bottom: 3px; left: 3px;
+  width: calc(50% - 3px);
+  background: var(--text-primary);
+  border-radius: 9999px;
+  transition: transform 0.25s cubic-bezier(0.22,1,0.36,1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
-
-.mode-slider-track[data-mode="voip"] .mode-slider-thumb {
-  transform: translateX(100%);
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.45);
-}
-
-.mode-slider-option {
+.mode-slider[data-mode="callback"] .mode-thumb { transform: translateX(0); }
+.mode-slider[data-mode="voip"] .mode-thumb { transform: translateX(100%); }
+.mode-opt {
   position: relative;
   z-index: 2;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
-  height: 100%;
-  border-radius: 9999px;
+  gap: 4px;
+  transition: color 0.2s;
+  color: var(--text-secondary);
+}
+.mode-slider[data-mode="callback"] .mode-opt[data-target="callback"],
+.mode-slider[data-mode="voip"] .mode-opt[data-target="voip"] {
+  color: var(--bg);
+}
+
+/* Queue items */
+#dialer-up-next-list .queue-item {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1.5px solid transparent;
   cursor: pointer;
-  transition: color 0.2s ease;
-  color: var(--text-secondary);
+  transition: all 0.12s ease;
 }
-
-.mode-slider-track[data-mode="callback"] .mode-slider-option[data-target="callback"],
-.mode-slider-track[data-mode="voip"] .mode-slider-option[data-target="voip"] {
-  color: #ffffff;
+#dialer-up-next-list .queue-item:hover { background: var(--surface-2); border-color: var(--border); }
+#dialer-up-next-list .queue-item.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  border-left-width: 3px;
 }
-
-/* ==========================================================================
-   Scrollbars & Keyboard Badges
-   ========================================================================== */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(161, 161, 170, 0.22);
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(161, 161, 170, 0.4);
-}
-
-.kanban-drop-active {
-  border-color: #6366f1 !important;
-  background-color: rgba(99, 102, 241, 0.08) !important;
-}
-
-kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+.queue-num {
+  font-family: "Fragment Mono", monospace;
   font-size: 10px;
-  font-family: "JetBrains Mono", monospace;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+.queue-item.selected .queue-num { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* Field cards */
+.field-card {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.field-card.custom { border-style: dashed; border-color: var(--accent); background: var(--accent-soft); }
+.field-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.6; }
+.field-value { font-size: 13px; font-weight: 600; margin-top: 4px; }
+
+/* Handset */
+#dialer-lead-phone { letter-spacing: -0.02em; }
+
+/* Disp buttons */
+.disp-btn {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.12s;
+}
+.disp-btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+.disp-btn.selected {
+  background: var(--text-primary);
+  color: var(--bg);
+  border-color: var(--text-primary);
+  font-weight: 600;
 }
 
-html.light kbd {
-  background: rgba(0, 0, 0, 0.05);
+/* Kanban */
+.kanban-lane { border-top: 3px solid var(--border); border-radius: 16px 16px 12px 12px; overflow: hidden; }
+.kanban-lane[data-stage="Queued"] { border-top-color: var(--text-muted); }
+.kanban-lane[data-stage="In Progress"] { border-top-color: var(--accent-2); }
+.kanban-lane[data-stage="Connected / Answered"] { border-top-color: #10B981; }
+.kanban-lane[data-stage="No Answer / Voicemail"] { border-top-color: var(--signal); }
+.kanban-lane[data-stage="Follow Up / Closed"] { border-top-color: #A78BFA; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 9999px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Toast */
+#toast-container > div {
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 12px 16px;
+}
+
+/* Focus */
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.animate-pulse { animation: pulse-dot 1.8s infinite; }
+
+@keyframes pop-in {
+  0% { transform: translateY(12px) scale(0.97); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.animate-pop-in { animation: pop-in 0.32s cubic-bezier(0.22,1,0.36,1); }
+
+/* Call pop specific */
+#call-pop-overlay { backdrop-filter: blur(6px); }
+#call-pop-card { max-height: 92vh; }
+#call-pop-fields-grid .field-card,
+#call-pop-excel-grid .field-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+#call-pop-excel-grid .field-card.custom {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
